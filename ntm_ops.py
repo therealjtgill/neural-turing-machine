@@ -3,6 +3,7 @@ from __future__ import print_function
 import collections
 import math
 
+from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import clip_ops
@@ -12,6 +13,7 @@ from tensorflow.python.ops import linalg_ops
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import nn_ops
 from tensorflow.python.ops import partitioned_variables
+from tensorflow.python.ops import random_ops
 from tensorflow.python.ops import variable_scope as vs
 
 from tensorflow.python.ops.rnn_cell_impl import _RNNCell as RNNCell
@@ -191,3 +193,31 @@ class NTMCell(RNNCell):
 		]
 
 		return tuple(small_state)
+
+	def random_state(self, batch_size):
+		state_size = self.state_size
+		random_state = [
+			random_ops.random_normal(shape=[batch_size, s], stddev=0.01,
+				mean=0.05)
+			for s in state_size
+		]
+
+		return tuple(random_state)
+
+	def bias_state(self, batch_size):
+		state_size = self.state_size
+		bias_state = [
+			random_ops.random_normal(shape=[batch_size, s], stddev=0.01,
+				mean=0.05)
+			for s in state_size[0:-2]
+		]
+		bias_state.append(array_ops.one_hot(
+			indices=array_ops.ones(
+				shape=[batch_size,], dtype=dtypes.uint8), 
+			depth=state_size[-2]))
+		bias_state.append(array_ops.one_hot(
+			indices=array_ops.ones(
+				shape=[batch_size,], dtype=dtypes.uint8), 
+			depth=state_size[-1]))
+
+		return tuple(bias_state)

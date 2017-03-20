@@ -2,6 +2,9 @@ from __future__ import print_function
 import tensorflow as tf
 import numpy as np
 from ntm_ops import NTMCell
+from time import time
+
+np.set_printoptions(threshold='nan')
 
 class NTM(object):
     def __init__(self, mem_size, session, vec_size, name="NTM"):
@@ -37,7 +40,7 @@ class NTM(object):
 
         with tf.variable_scope(name):
             self.feed_x = tf.placeholder(dtype=tf.float32, shape=(None, None, vec_size))
-            self.feed_y = tf.placeholder(dtype=tf.float32, shape=(None, None, vec_size))
+            self.feed_y = tf.placeholder(dtype=tf.float32, shape=(None, None, vec_size-1))
 
             batch_size = tf.shape(self.feed_x)[0]
             num_instr = tf.shape(self.feed_x)[1]
@@ -98,23 +101,25 @@ class NTM(object):
                 [self.write_head[k] for k in self.write_head], axis=2)
             #print(cell_input)
             ntm_cell = NTMCell(mem_size=(N,M))
+            self.ntm_init_state = ntm_cell.bias_state(batch_size)
+            print('init state:', self.ntm_init_state)
 
             self.ntm_outputs, self.last_ntm_states = tf.nn.dynamic_rnn( \
-                cell=ntm_cell, initial_state=ntm_cell.small_state(batch_size), 
+                cell=ntm_cell, initial_state=self.ntm_init_state,
                 inputs=cell_input, dtype=tf.float32)
             self.read_addresses = self.ntm_outputs[-2]
             self.write_addresses = self.ntm_outputs[-3]
-            self.L = tf.Variable(tf.random_normal([M, vec_size], stddev=0.01))
-            self.b_L = tf.Variable(tf.random_normal([vec_size,], stddev=0.01))
+            self.L = tf.Variable(tf.random_normal([M, vec_size-1], stddev=0.01))
+            self.b_L = tf.Variable(tf.random_normal([vec_size-1,], stddev=0.01))
             #print('ntm_outputs:', self.ntm_outputs)
 
             read_values_flat = tf.reshape(self.ntm_outputs[-1], [-1,M])
             logits_flat = tf.matmul(read_values_flat, self.L) + self.b_L
 
-            #logits = tf.log(self.read_outputs[-1]/(1 - self.read_outputs[-1]))
+            #tf.clip_by_value(J, -10., 10.)
 
             #logits_flat = tf.reshape(logits, [-1,M])
-            feed_y_flat = tf.reshape(self.feed_y, [-1,vec_size])
+            feed_y_flat = tf.reshape(self.feed_y, [-1,vec_size-1])
             self.loss = tf.reduce_mean(tf.losses.sigmoid_cross_entropy( \
                 multi_class_labels=feed_y_flat, logits=logits_flat))
 
@@ -151,6 +156,7 @@ class NTM(object):
             return error, ra, wa, rh, wh
         else:
             error, _ = self.session.run(fetches, feeds)
+            #print('random state:')
             return error
         
     def run(self, test_x, get_ntm_outputs=False):
@@ -182,10 +188,12 @@ def get_training_batch(batch_size, seq_length, num_bits):
         batch_y = np.zeros((bs, sl*2+1, nb+1))
         sequence = (np.random.rand(bs, sl, nb)*2).astype(int)
         
-        batch_y[:,0:seq_length,0:nb] = sequence
+        batch_y[:,0:seq_length,0:nb] = sequence[:,:,:]
         batch_y[:,sl,num_bits] = 1
         batch_x = batch_y[:,:,:]
-        batch_y[:,sl+1:,0:nb] = sequence
+        batch_y[:,sl+1:,0:nb] = sequence[:,:,:]
+        batch_y = batch_y[:,:,0:num_bits]
+
         #print(str(batch_x[0,0:2,:]))
 
         return batch_x, batch_y
@@ -194,34 +202,38 @@ def main():
     #print("in main")
     #get_training_batch(32, 10, 8)
     #np.set_printoptions(threshold='nan')
-    shape=(20,128)
+    prev_time = time()
+    shape=(32,20)
     session = tf.Session()
     ntm = NTM(shape, session, 9)
     session.run(tf.global_variables_initializer())
     print('graph built')
     for step in range(70000):
-        batch_x, batch_y = get_training_batch(32, 10, 8)
+        num_instr = int(np.random.rand()*20)
+        batch_x, batch_y = get_training_batch(32, num_instr, 8)
         
         if step % 100 == 0:
+            time_elapsed = time() - prev_time
+            prev_time = time()
             print('-------------------------------------------')
             print('step:', step)
+            print('time elapsed:', time_elapsed)
             error, ra, wa, rh, wh = ntm.train(batch_x, batch_y, True)
+
+            sample_instr = int(np.random.rand()*num_instr)
             
-            print('read addresses:', str(ra[10,11:16,:]))
-            print('write addresses:', str(wa[10,11:16,:]))
-            print('read head contents')
-            for r in rh:
-                print(r)
-                print(rh[r][5,11:16,:])
+            print('read addresses:', str(ra[sample_instr,11:16,:]))
+            print('write addresses:', str(wa[sample_instr,11:16,:]))
+            print('read head key:', rh['key'][sample_instr,11:16,:])
+            
                 
-            print('write head contents')
-            for w in wh:
-                print(w)
-                print(wh[w][5,11:16,:])
+            print('write head key:', wh['key'][20,11:16,:])
+            
                 
             print('loop train error:', step, error)
         else:
-            ntm.train(batch_x, batch_y)
+            error = ntm.train(batch_x, batch_y)
+            print('step:', step, error)
         
         #error = ntm.train(batch_x, batch_y)
         #print('loop train error:', step, error)
