@@ -102,7 +102,7 @@ class NTM(object):
             #print(cell_input)
             ntm_cell = NTMCell(mem_size=(N,M))
             self.ntm_init_state = ntm_cell.bias_state(batch_size)
-            print('init state:', self.ntm_init_state)
+            #print('init state:', self.ntm_init_state)
 
             self.ntm_outputs, self.last_ntm_states = tf.nn.dynamic_rnn( \
                 cell=ntm_cell, initial_state=self.ntm_init_state,
@@ -120,11 +120,23 @@ class NTM(object):
 
             #logits_flat = tf.reshape(logits, [-1,M])
             feed_y_flat = tf.reshape(self.feed_y, [-1,vec_size-1])
-            self.loss = tf.reduce_mean(tf.losses.sigmoid_cross_entropy( \
-                multi_class_labels=feed_y_flat, logits=logits_flat))
+            #self.loss = tf.reduce_mean(tf.losses.sigmoid_cross_entropy( \
+            #    multi_class_labels=feed_y_flat, logits=logits_flat))
+            self.loss = tf.reduce_mean(
+                tf.nn.sigmoid_cross_entropy_with_logits(
+                    labels=feed_y_flat, logits=logits_flat))
 
-            self.train_op = tf.train.RMSPropOptimizer( \
-                learning_rate=0.0001, momentum=0.9).minimize(self.loss)
+            self.optimizer = tf.train.RMSPropOptimizer(
+                learning_rate=0.0001, momentum=0.9)
+
+            grads_and_vars = self.optimizer.compute_gradients(self.loss)
+            capped_grads = [(tf.clip_by_value(grad, -10., 10.), var) \
+                for grad, var in grads_and_vars]
+
+            self.train_op = self.optimizer.apply_gradients(capped_grads)
+
+            #self.train_op = tf.train.RMSPropOptimizer( \
+            #    learning_rate=0.0001, momentum=0.9).minimize(self.loss)
 
     def train(self, batch_x, batch_y, get_ntm_outputs=False):
         '''
@@ -205,12 +217,15 @@ def main():
     prev_time = time()
     shape=(32,20)
     session = tf.Session()
+
     ntm = NTM(shape, session, 9)
     session.run(tf.global_variables_initializer())
     print('graph built')
-    for step in range(70000):
-        num_instr = int(np.random.rand()*20)
-        batch_x, batch_y = get_training_batch(32, num_instr, 8)
+    saver = tf.train.Saver(tf.global_variables())
+    for step in range(20000):
+        num_instr = int(np.random.rand()*12)+8
+        #num_instr = 10
+        batch_x, batch_y = get_training_batch(64, num_instr, 8)
         
         if step % 100 == 0:
             time_elapsed = time() - prev_time
@@ -224,10 +239,10 @@ def main():
             
             print('read addresses:', str(ra[sample_instr,11:16,:]))
             print('write addresses:', str(wa[sample_instr,11:16,:]))
-            print('read head key:', rh['key'][sample_instr,11:16,:])
+            #print('read head key:', rh['key'][sample_instr,11:16,:])
             
                 
-            print('write head key:', wh['key'][20,11:16,:])
+            #print('write head key:', wh['key'][20,11:16,:])
             
                 
             print('loop train error:', step, error)
@@ -237,6 +252,7 @@ def main():
         
         #error = ntm.train(batch_x, batch_y)
         #print('loop train error:', step, error)
+    saver.save(session, "ntm.ckpt")
 
 if __name__ == "__main__":
     main()

@@ -101,10 +101,13 @@ class NTMCell(RNNCell):
 
 			def cos_sim(a, b):
 				dot = math_ops.reduce_sum(a*b, axis=1)
-				norm = linalg_ops.norm(a, ord=2, axis=1) * \
-					linalg_ops.norm(b, ord=2, axis=1)
+				#norm = linalg_ops.norm(a, ord=2, axis=1) * \
+				#	linalg_ops.norm(b, ord=2, axis=1)
+				norm_a = math_ops.sqrt(math_ops.reduce_sum(a*a, axis=1))
+				norm_b = math_ops.sqrt(math_ops.reduce_sum(b*b, axis=1))
 
-				return math_ops.divide(dot, norm)
+
+				return math_ops.divide(dot, norm_a*norm_b)
 			
 			def generate_address(pieces, w_prev):
 				'''
@@ -207,8 +210,9 @@ class NTMCell(RNNCell):
 	def bias_state(self, batch_size):
 		state_size = self.state_size
 		bias_state = [
-			random_ops.random_normal(shape=[batch_size, s], stddev=0.01,
-				mean=0.05)
+			math_ops.abs(
+				random_ops.random_normal(
+					shape=[batch_size, s], stddev=0.01,	mean=0.05))
 			for s in state_size[0:-2]
 		]
 		bias_state.append(array_ops.one_hot(
