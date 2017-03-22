@@ -2,6 +2,7 @@ from __future__ import print_function
 
 import collections
 import math
+import numpy as np
 
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
@@ -10,6 +11,7 @@ from tensorflow.python.ops import clip_ops
 from tensorflow.python.ops import embedding_ops
 from tensorflow.python.ops import init_ops
 from tensorflow.python.ops import linalg_ops
+from tensorflow.python.ops import logging_ops
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import nn_ops
 from tensorflow.python.ops import partitioned_variables
@@ -31,7 +33,7 @@ class NTMCell(RNNCell):
 
 	This class is meant to be wrapped in a 'dynamic_rnn' method.
 	'''
-	def __init__(self, mem_size, slim_output=False):
+	def __init__(self, mem_size, shift_range=2, slim_output=False):
 		'''
 		Args:
 			mem_size: Tuple containing dimensions of the memory matrix, in 
@@ -48,7 +50,7 @@ class NTMCell(RNNCell):
 			raise ValueError('Incorrect number of memory indices. Received ' + \
 				str(len(mem_size)) + 'but expected 2.')
 		self.N, self.M = mem_size
-
+		self.shift_range = shift_range
 		self._num_units = self.M*self.N + 2*self.N
 
 	@property
@@ -90,9 +92,11 @@ class NTMCell(RNNCell):
 		'''
 		M = self.M
 		N = self.N
+		S = self.shift_range
 		#print('m n', M, N)
 		with vs.variable_scope(scope or "ntm_cell"):
-			write_piece, read_piece = array_ops.split(inputs, [3*M+N+3, -1], axis=1)
+			write_piece, read_piece = array_ops.split(inputs, [3*M+S+3, -1],
+				axis=1)
 			mem_prev = array_ops.stack(state[0:-2], axis=1)
 			#print('state len:', len(state))
 			#print('mem_prev:', mem_prev)
@@ -100,14 +104,75 @@ class NTMCell(RNNCell):
 			write_w_prev = state[-2]
 
 			def cos_sim(a, b):
+				'''
+				Compute the cosine similarity between vectors 'a' and 'b'.
+
+				Args:
+					a, b: tensors of size [batch_size, M] whose cosine
+					  similarity will be computed.
+
+				Returns:
+					(a o b)/(|a||b|)
+				'''
 				dot = math_ops.reduce_sum(a*b, axis=1)
 				#norm = linalg_ops.norm(a, ord=2, axis=1) * \
 				#	linalg_ops.norm(b, ord=2, axis=1)
-				norm_a = math_ops.sqrt(math_ops.reduce_sum(a*a, axis=1))
-				norm_b = math_ops.sqrt(math_ops.reduce_sum(b*b, axis=1))
+				#norm_a = math_ops.sqrt(math_ops.reduce_sum(a*a, axis=1))
+				#norm_b = math_ops.sqrt(math_ops.reduce_sum(b*b, axis=1))
+				norm_a = linalg_ops.norm(a, ord=2, axis=1)
+				norm_b = linalg_ops.norm(b, ord=2, axis=1)
+				logging_ops.Print(norm_a, [norm_a])
+				logging_ops.Print(norm_b, [norm_b])
 
+				return math_ops.divide(dot, math_ops.add(norm_a*norm_b, 1e-3))
 
-				return math_ops.divide(dot, norm_a*norm_b)
+			def circular_convolve(shift, w_i):
+				'''
+				Calculates circular convolution of the shift weights and the
+				interpolated address vector.
+				Convert the shift array to a reversed length N array by 
+				tiling up to N % S - 1 copies, and tacking on a split portion
+				of the reversed array.
+				EX:
+				  shift = [1, 2, 3]
+				  N = 11 (number of memory cells), S = 3 (length of shift)
+				  shift_rev = [3, 2, 1]
+				  shift_long = [3, 2, 1, 3, 2, 1, 3, 2, 1, 3, 2  ]
+				               | orig  | tile 1 | tile 2 | split |  
+				'''   
+				shift_rev = array_ops.reverse(shift, axis=[1])
+				num_tiles = max(int(N / S), 0)
+				#num_tiles = 0 if num_tiles < 0 else num_tiles
+				split_loc = (N % S)
+				if num_tiles > 0 and split_loc == 0:
+					num_tiles += 1
+
+				print('num_tiles, split_loc:', num_tiles, split_loc)
+
+				if num_tiles > 0:
+					shift_long = array_ops.tile(shift_rev, [1, num_tiles])
+				else:
+					shift_long = shift_rev
+
+				if split_loc > 0:
+					tack = array_ops.split(shift_rev, (split_loc, -1), axis=1)[0]
+					shift_long = array_ops.concat([shift_long, tack], axis=1)
+
+				print('num_tiles, split_loc:', num_tiles, split_loc)
+				print('shape of shift_long:', shift_long.get_shape())
+						
+				circ = []
+				for j in range(N):
+					shift_split = array_ops.split(shift_long, (j,N-j), axis=1)[::-1]
+					circ.append(array_ops.concat(shift_split, axis=1))
+
+				#return circ
+				w_conv = []
+				for c in circ:
+					w_conv.append(math_ops.reduce_sum(w_i*c, axis=1))
+
+				return array_ops.stack(w_conv, axis=1)
+
 			
 			def generate_address(pieces, w_prev):
 				'''
@@ -129,38 +194,24 @@ class NTMCell(RNNCell):
 
 				w_i = g*w_c + (1.-g)*w_prev
 
-				circ = []
-				for j in range(N):
-					shift_split = array_ops.split(shift, (j,N-j), axis=1)[::-1]
-					circ.append(array_ops.concat(shift_split, axis=1))
-				#print('circ:', circ)
-
-				#circ_shift = array_ops.stack(circ, axis=1)
-				#w_conv = math_ops.matmul(circ_shift,
-				#	array_ops.expand_dims(w_i, axis=2))
-
-				w_conv = []
-				for c in circ:
-					w_conv.append(math_ops.reduce_sum(w_i*c, axis=1))
-
-				w_conv = array_ops.stack(w_conv, axis=1)
+				w_conv = circular_convolve(shift, w_i)
 				#print('w_conv:', w_conv)
 				w_sharp = math_ops.pow(w_conv, gamma)
 				#print('w_sharp:', w_sharp)
 
-				w = w_sharp/math_ops.reduce_sum(w_sharp, axis=1,
+				w = w_sharp / math_ops.reduce_sum(w_sharp, axis=1,
 					keep_dims=True)
 				#print('w returned from inner func:', w)
 				return w
 
 			# Get the addresses from the write head.
 			write_pieces = array_ops.split(write_piece,
-				[M, N, 1, 1, 1, M, M], axis=1)
+				[M, S, 1, 1, 1, M, M], axis=1)
 			write_w = generate_address(write_pieces[0:-2], write_w_prev)
 			erase, add = write_pieces[-2], write_pieces[-1]
 
 			# Get the addresses from the read head.
-			read_pieces = array_ops.split(read_piece, [M, N, 1, 1, 1], axis=1)
+			read_pieces = array_ops.split(read_piece, [M, S, 1, 1, 1], axis=1)
 			read_w = generate_address(read_pieces, read_w_prev)
 
 			# Generate the new memory matrices for each batch id.
@@ -185,7 +236,7 @@ class NTMCell(RNNCell):
 				(write_w, read_w)
 			#print('returned stuff', state_tuple + (reads,))
 			#print('reads:', reads)
-		return state_tuple + (reads,), state_tuple
+			return state_tuple + (reads,), state_tuple
 
 	def small_state(self, batch_size):
 		state_size = self.state_size
@@ -209,6 +260,25 @@ class NTMCell(RNNCell):
 
 	def bias_state(self, batch_size):
 		state_size = self.state_size
+		start_bias = int(np.random.rand()*self.N/2)
+		
+		bias_state = [
+			np.abs(np.random.rand(batch_size, s)/100)
+			for s in state_size[0:-2]
+		]
+		one_hot = np.zeros((batch_size, state_size[-2]))
+		one_hot[:,start_bias] = 1.
+		bias_state.append(one_hot)
+
+		one_hot = np.zeros((batch_size, state_size[-1]))
+		one_hot[:,start_bias] = 1.
+		bias_state.append(one_hot)
+
+		return tuple(bias_state)
+
+	'''
+	def bias_state(self, batch_size):
+		state_size = self.state_size
 		bias_state = [
 			math_ops.abs(
 				random_ops.random_normal(
@@ -218,10 +288,11 @@ class NTMCell(RNNCell):
 		bias_state.append(array_ops.one_hot(
 			indices=array_ops.ones(
 				shape=[batch_size,], dtype=dtypes.uint8), 
-			depth=state_size[-2]))
+			depth=state_size[-2], dtype=dtypes.float32))
 		bias_state.append(array_ops.one_hot(
 			indices=array_ops.ones(
 				shape=[batch_size,], dtype=dtypes.uint8), 
-			depth=state_size[-1]))
+			depth=state_size[-1], dtype=dtypes.float32))
 
 		return tuple(bias_state)
+	'''
