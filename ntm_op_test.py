@@ -178,7 +178,7 @@ read = tf.Variable(tf.random_normal(dtype=tf.float64, shape=(batch_size, M+S+3))
 write_pieces = tf.split(write, [M, M, M, S, 1, 1, 1], axis=1)
 read_pieces = tf.split(read, [M, S, 1, 1, 1], axis=1)
 
-write_keys = ['key', 'add', 'erase', 'shift', 'beta', 'gamma', 'g']
+write_keys = ['key', 'shift', 'beta', 'gamma', 'g', 'add', 'erase']
 read_keys = ['key', 'shift', 'beta', 'gamma', 'g']
 
 write_head = \
@@ -203,11 +203,15 @@ read_head = \
     'g':tf.sigmoid(read_pieces[4]),
 }
 
-cell_input = tf.concat([read_head[k] for k in read_keys] + \
-    [write_head[k] for k in write_keys], axis=1)
+cell_input = tf.concat([write_head[k] for k in write_keys] + \
+    [read_head[k] for k in read_keys], axis=1)
 
 output = head_ops(cell_input, bias_state(batch_size))
 session.run(tf.global_variables_initializer())
-print(session.run(stufflist))
+
+for k in stufflist:
+	print(k)
+	print(session.run(stufflist[k]	))
+
 
 print(session.run(1-write_head['g']))

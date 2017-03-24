@@ -144,8 +144,7 @@ class NTMCell(RNNCell):
 				num_tiles = max(int(N / S), 0)
 				#num_tiles = 0 if num_tiles < 0 else num_tiles
 				split_loc = (N % S)
-				if num_tiles > 0 and split_loc == 0:
-					num_tiles += 1
+
 
 				print('num_tiles, split_loc:', num_tiles, split_loc)
 
@@ -207,8 +206,8 @@ class NTMCell(RNNCell):
 			# Get the addresses from the write head.
 			write_pieces = array_ops.split(write_piece,
 				[M, S, 1, 1, 1, M, M], axis=1)
-			write_w = generate_address(write_pieces[0:-2], write_w_prev)
-			erase, add = write_pieces[-2], write_pieces[-1]
+			write_w = generate_address(write_pieces[0:5], write_w_prev)
+			erase, add = write_pieces[-1], write_pieces[-2]
 
 			# Get the addresses from the read head.
 			read_pieces = array_ops.split(read_piece, [M, S, 1, 1, 1], axis=1)
@@ -266,12 +265,9 @@ class NTMCell(RNNCell):
 			np.abs(np.random.rand(batch_size, s)/100)
 			for s in state_size[0:-2]
 		]
-		one_hot = np.zeros((batch_size, state_size[-2]))
-		one_hot[:,start_bias] = 1.
-		bias_state.append(one_hot)
 
 		one_hot = np.zeros((batch_size, state_size[-1]))
-		one_hot[:,start_bias] = 1.
+		bias_state.append(one_hot)
 		bias_state.append(one_hot)
 
 		return tuple(bias_state)
