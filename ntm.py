@@ -70,16 +70,16 @@ class NTM(object):
                 stddev=0.01))
             self.b_K = tf.Variable(tf.random_normal([M+S+3,], stddev=0.01))
 
-            self.write = tf.matmul(lstm_outputs_reshaped, self.J) + self.b_J
-            self.read = tf.matmul(lstm_outputs_reshaped, self.K) + self.b_K
+            self.write_raw = tf.matmul(lstm_outputs_reshaped, self.J) + self.b_J
+            self.read_raw = tf.matmul(lstm_outputs_reshaped, self.K) + self.b_K
 
-            self.write = tf.reshape(self.write, [batch_size, num_instr, -1])
-            self.read = tf.reshape(self.read, [batch_size, num_instr, -1])
+            self.write_raw = tf.reshape(self.write_raw, [batch_size, num_instr, 3*M+S+3])
+            self.read_raw = tf.reshape(self.read_raw, [batch_size, num_instr, M+S+3])
 
             # Split the forward portions of the read and write heads into 
             # the various pieces. See paper by Alex Graves for more info.
-            write_pieces = tf.split(self.write, [M, M, M, S, 1, 1, 1], axis=2)
-            read_pieces = tf.split(self.read, [M, S, 1, 1, 1], axis=2)
+            write_pieces = tf.split(self.write_raw, [M, M, M, S, 1, 1, 1], axis=2)
+            read_pieces = tf.split(self.read_raw, [M, S, 1, 1, 1], axis=2)
 
             write_keys = ['key', 'shift', 'beta', 'gamma', 'g', 'add', 'erase']
             read_keys = ['key', 'shift', 'beta', 'gamma', 'g']
@@ -106,8 +106,10 @@ class NTM(object):
                 'g':tf.sigmoid(read_pieces[4]),
             }
 
-            cell_input = tf.concat([self.write_head[k] for k in write_keys] + \
-                [self.read_head[k] for k in read_keys], axis=2)
+            #cell_input = tf.concat([self.write_head[k] for k in write_keys] + \
+            #    [self.read_head[k] for k in read_keys], axis=2)
+
+            cell_input = tf.concat([self.write_raw, self.read_raw], axis=2)
             #print(cell_input)
             self.ntm_cell = NTMCell(mem_size=(N,M), shift_range=S)
             #ntm_state = ntm_cell.bias_state(batch_size)

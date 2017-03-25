@@ -180,6 +180,13 @@ class NTMCell(RNNCell):
 				'''
 				key, shift, gamma, beta, g = pieces
 
+				key = math_ops.sigmoid(key)
+				shift = nn_ops.softmax(shift)
+				gamma = nn_ops.softplus(gamma) + 1.
+				beta = nn_ops.softplus(beta)
+				g = math_ops.sigmoid(g)
+
+
 				w_c_arg = []
 				for m in array_ops.unstack(mem_prev, axis=1):
 					w_c_arg.append(cos_sim(m, key))
@@ -207,15 +214,17 @@ class NTMCell(RNNCell):
 			write_pieces = array_ops.split(write_piece,
 				[M, S, 1, 1, 1, M, M], axis=1)
 			write_w = generate_address(write_pieces[0:5], write_w_prev)
-			erase, add = write_pieces[-1], write_pieces[-2]
+
+			erase = math_ops.sigmoid(write_pieces[-1])
+			add = math_ops.sigmoid(write_pieces[-2])
 
 			# Get the addresses from the read head.
 			read_pieces = array_ops.split(read_piece, [M, S, 1, 1, 1], axis=1)
 			read_w = generate_address(read_pieces, read_w_prev)
 
 			# Generate the new memory matrices for each batch id.
-			write_w_tiled = array_ops.expand_dims(write_w, axis=2)
-			write_w_tiled = array_ops.tile(write_w_tiled, [1, 1, M])
+			write_w_exp = array_ops.expand_dims(write_w, axis=2)
+			write_w_tiled = array_ops.tile(write_w_exp, [1, 1, M])
 
 			erase_diag = array_ops.matrix_diag(erase)
 			add_diag = array_ops.matrix_diag(add)
