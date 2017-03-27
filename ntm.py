@@ -45,6 +45,7 @@ class NTM(object):
         with tf.variable_scope(name):
             self.feed_x = tf.placeholder(dtype=tf.float32, shape=(None, None, vec_size))
             self.feed_y = tf.placeholder(dtype=tf.float32, shape=(None, None, vec_size-1))
+            self.feed_lr = tf.placeholder(dtype=tf.float32, shape=(0))
 
             batch_size = tf.shape(self.feed_x)[0]
             num_instr = tf.shape(self.feed_x)[1]
@@ -53,7 +54,8 @@ class NTM(object):
                 num_lstm_units, forget_bias=1.0)
 
             self.lstm_outputs, self.last_hidden_state = tf.nn.dynamic_rnn(cell= \
-                self.lstm_cell, inputs=self.feed_x, dtype=tf.float32)
+                self.lstm_cell, inputs=self.feed_x,
+                dtype=tf.float32, parallel_iterations=64)
 
             self.lstm_outputs = tf.tanh(self.lstm_outputs)
 
@@ -73,38 +75,10 @@ class NTM(object):
             self.write_raw = tf.matmul(lstm_outputs_reshaped, self.J) + self.b_J
             self.read_raw = tf.matmul(lstm_outputs_reshaped, self.K) + self.b_K
 
-            self.write_raw = tf.reshape(self.write_raw, [batch_size, num_instr, 3*M+S+3])
-            self.read_raw = tf.reshape(self.read_raw, [batch_size, num_instr, M+S+3])
-
-            # Split the forward portions of the read and write heads into 
-            # the various pieces. See paper by Alex Graves for more info.
-            write_pieces = tf.split(self.write_raw, [M, M, M, S, 1, 1, 1], axis=2)
-            read_pieces = tf.split(self.read_raw, [M, S, 1, 1, 1], axis=2)
-
-            write_keys = ['key', 'shift', 'beta', 'gamma', 'g', 'add', 'erase']
-            read_keys = ['key', 'shift', 'beta', 'gamma', 'g']
-
-            self.write_head = \
-            {
-                #'key':tf.sigmoid(write_pieces[0]),
-                'key':write_pieces[0],
-                'add':tf.sigmoid(write_pieces[1]),
-                'erase':tf.sigmoid(write_pieces[2]),
-                'shift':tf.nn.softmax(write_pieces[3]),
-                'beta':tf.nn.softplus(write_pieces[4]),
-                'gamma':tf.nn.softplus(write_pieces[5]) + 1,
-                'g':tf.sigmoid(write_pieces[6]),
-            }
-
-            self.read_head = \
-            {
-                #'key':tf.sigmoid(read_pieces[0]),
-                'key':read_pieces[0],
-                'shift':tf.nn.softmax(read_pieces[1]),
-                'beta':tf.nn.softplus(read_pieces[2]),
-                'gamma':tf.nn.softplus(read_pieces[3]) + 1,
-                'g':tf.sigmoid(read_pieces[4]),
-            }
+            self.write_raw = tf.reshape(self.write_raw,
+                [batch_size, num_instr, 3*M+S+3])
+            self.read_raw = tf.reshape(self.read_raw,
+                [batch_size, num_instr, M+S+3])
 
             #cell_input = tf.concat([self.write_head[k] for k in write_keys] + \
             #    [self.read_head[k] for k in read_keys], axis=2)
@@ -114,6 +88,8 @@ class NTM(object):
             self.ntm_cell = NTMCell(mem_size=(N,M), shift_range=S)
             #ntm_state = ntm_cell.bias_state(batch_size)
             #print('init state:', self.ntm_init_state)
+            self.write_head, self.read_head = NTMCell.head_pieces(
+                self.write_raw, self.read_raw, mem_size, S, 2, 'dict')
 
             self.ntm_init_state = tuple(
                 [tf.placeholder(dtype=tf.float32, shape=(None, s)) \
@@ -121,7 +97,7 @@ class NTM(object):
 
             self.ntm_outputs, self.last_ntm_states = tf.nn.dynamic_rnn( \
                 cell=self.ntm_cell, initial_state=self.ntm_init_state,
-                inputs=cell_input, dtype=tf.float32)
+                inputs=cell_input, dtype=tf.float32, parallel_iterations=64)
             self.read_addresses = self.ntm_outputs[-2]
             self.write_addresses = self.ntm_outputs[-3]
 
@@ -150,7 +126,7 @@ class NTM(object):
             #    (1-targets_flat)*tf.log(1-predictions_flat))
 
             self.optimizer = tf.train.RMSPropOptimizer(
-                learning_rate=0.001, momentum=0.9)
+                learning_rate=self.feed_lr, momentum=0.9)
 
             grads_and_vars = self.optimizer.compute_gradients(self.loss)
             capped_grads = [(tf.clip_by_value(grad, -10., 10.), var) \
@@ -158,7 +134,7 @@ class NTM(object):
 
             self.train_op = self.optimizer.apply_gradients(capped_grads)
 
-    def train(self, batch_x, batch_y, get_ntm_outputs=False):
+    def train(self, batch_x, batch_y, learning_rate=1e-3, get_ntm_outputs=False):
         '''
         Args:
             batch_x: Batch of instructions to be sent to the controller.
@@ -315,13 +291,13 @@ def main():
                     batch_x=prev_vals[-2]
                     ultra_print(error, ra, wa, rh, wh, state, pred, batch_y,
                         sample_instr, batch_size, num_instr)
-                    print('full desired output:', batch_y)
+                    #print('full desired output:', batch_y)
                     exit()
 
                 prev_vals=list([error, ra, wa, rh, wh, state, pred, batch_y,
                     batch_x, num_instr])
 
-            if step % 1000 == 0 and step != 0:
+            if step % 500 == 0 and step != 0:
                 saver.save(session, date + "ntm.ckpt")
                 print('Model saved!')
 
