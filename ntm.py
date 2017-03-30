@@ -45,7 +45,7 @@ class NTM(object):
         with tf.variable_scope(name):
             self.feed_x = tf.placeholder(dtype=tf.float32, shape=(None, None, vec_size))
             self.feed_y = tf.placeholder(dtype=tf.float32, shape=(None, None, vec_size-1))
-            self.feed_lr = tf.placeholder(dtype=tf.float32, shape=(0))
+            self.feed_lr = tf.placeholder(dtype=tf.float32, shape=())
 
             batch_size = tf.shape(self.feed_x)[0]
             num_instr = tf.shape(self.feed_x)[1]
@@ -152,10 +152,11 @@ class NTM(object):
               'get_ntm_outputs' flag is set to True.
         '''
         
+        lr = learning_rate
         batch_size = batch_x.shape[0]
         init_state = self.ntm_cell.bias_state(batch_size)
         fetches = [self.loss, self.train_op]
-        feeds = {self.feed_x: batch_x, self.feed_y: batch_y}
+        feeds = {self.feed_x: batch_x, self.feed_y: batch_y, self.feed_lr:lr}
 
         for i in range(len(init_state)):
             feeds[self.ntm_init_state[i]] = init_state[i]
@@ -248,9 +249,10 @@ def main():
     print('graph built')
 
     saver = tf.train.Saver(tf.global_variables())
+    lr = 1e-4
 
     if train:
-        #saver.restore(session, "models/2017-03-22193204.482822ntm.ckpt")
+        saver.restore(session, "models/2017-03-29033338.912108ntm.ckpt")
         for step in range(50000):
             num_instr = int(np.random.rand()*12)+8
             #num_instr = 10
@@ -262,7 +264,8 @@ def main():
                 print('-------------------------------------------')
                 print('step:', step)
                 print('time elapsed:', time_elapsed)
-                error, ra, wa, rh, wh, state, pred = ntm.train(batch_x, batch_y, True)
+                error, ra, wa, rh, wh, state, pred = ntm.train(batch_x, 
+                	batch_y, lr, True)
                 avg_error += error
 
                 sample_instr = int(np.random.rand()*num_instr)
@@ -273,11 +276,14 @@ def main():
                     
                 print('loop train error:', step, error)
                 print('average error:', avg_error/print_thresh)
-                avg_error = 0
+
+                if avg_error < 0.15:
+                	lr = 1e-4
                 if np.isnan(error):
                     exit()
+                avg_error = 0
             else:
-                error, ra, wa, rh, wh, state, pred = ntm.train(batch_x, batch_y, True)
+                error, ra, wa, rh, wh, state, pred = ntm.train(batch_x, batch_y, lr, True)
                 avg_error += error
                 print('step:', step, error, 'sequence length:', num_instr)
 
@@ -292,6 +298,8 @@ def main():
                     ultra_print(error, ra, wa, rh, wh, state, pred, batch_y,
                         sample_instr, batch_size, num_instr)
                     #print('full desired output:', batch_y)
+                    print('full output:', np.reshape(pred, 
+      					[batch_size, num_instr*2+1, -1]))
                     exit()
 
                 prev_vals=list([error, ra, wa, rh, wh, state, pred, batch_y,
