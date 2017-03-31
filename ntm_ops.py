@@ -121,8 +121,8 @@ class NTMCell(RNNCell):
 				#norm_b = math_ops.sqrt(math_ops.reduce_sum(b*b, axis=1))
 				norm_a = linalg_ops.norm(a, ord=2, axis=1)
 				norm_b = linalg_ops.norm(b, ord=2, axis=1)
-				logging_ops.Print(norm_a, [norm_a])
-				logging_ops.Print(norm_b, [norm_b])
+				#logging_ops.Print(norm_a, [norm_a])
+				#logging_ops.Print(norm_b, [norm_b])
 
 				return math_ops.divide(dot, math_ops.add(norm_a*norm_b, 1e-3))
 
@@ -146,7 +146,7 @@ class NTMCell(RNNCell):
 				split_loc = (N % S)
 
 
-				print('num_tiles, split_loc:', num_tiles, split_loc)
+				#print('num_tiles, split_loc:', num_tiles, split_loc)
 
 				if num_tiles > 0:
 					shift_long = array_ops.tile(shift_rev, [1, num_tiles])
@@ -157,8 +157,8 @@ class NTMCell(RNNCell):
 					tack = array_ops.split(shift_rev, (split_loc, -1), axis=1)[0]
 					shift_long = array_ops.concat([shift_long, tack], axis=1)
 
-				print('num_tiles, split_loc:', num_tiles, split_loc)
-				print('shape of shift_long:', shift_long.get_shape())
+				#print('num_tiles, split_loc:', num_tiles, split_loc)
+				#print('shape of shift_long:', shift_long.get_shape())
 						
 				circ = []
 				for j in range(N):
@@ -291,7 +291,8 @@ class NTMCell(RNNCell):
 		key_w, shift_w, gamma_w, beta_w, g_w, add_w, erase_w = write_pieces
 			
 		shift_w = nn_ops.softmax(shift_w)
-		gamma_w = nn_ops.softplus(gamma_w) + 1.
+		#gamma_w = nn_ops.softplus(gamma_w) + 1.
+		gamma_w = 50.*math_ops.sigmoid(gamma_w) + 1.
 		beta_w = nn_ops.softplus(beta_w)
 		g_w = math_ops.sigmoid(g_w)
 		add_w = math_ops.sigmoid(add_w)
@@ -300,7 +301,8 @@ class NTMCell(RNNCell):
 		key_r, shift_r, gamma_r, beta_r, g_r = read_pieces
 
 		shift_r = nn_ops.softmax(shift_r)
-		gamma_r = nn_ops.softplus(gamma_r) + 1.
+		#gamma_r = nn_ops.softplus(gamma_r) + 1.
+		gamma_r = 50*math_ops.sigmoid(gamma_r) + 1.
 		beta_r = nn_ops.softplus(beta_r)
 		g_r = math_ops.sigmoid(g_r)
 

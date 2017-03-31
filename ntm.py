@@ -1,8 +1,7 @@
 from __future__ import print_function
 import tensorflow as tf
 import numpy as np
-import matplotlib.pyplot as plt
-import matplotlib.image as mpimg
+from utils import *
 from datetime import datetime
 from ntm_ops import NTMCell
 from time import time
@@ -134,7 +133,7 @@ class NTM(object):
 
             self.train_op = self.optimizer.apply_gradients(capped_grads)
 
-    def train(self, batch_x, batch_y, learning_rate=1e-3, get_ntm_outputs=False):
+    def train(self, batch_x, batch_y, learning_rate=1e-4, get_ntm_outputs=False):
         '''
         Args:
             batch_x: Batch of instructions to be sent to the controller.
@@ -244,7 +243,7 @@ def main():
     #plt.imshow(test_y[0].T)
     #plt.show()
     
-    ntm = NTM(shape, session, 9, 3)
+    ntm = NTM(shape, session, 9, shift_range=3)
     session.run(tf.global_variables_initializer())
     print('graph built')
 
@@ -252,7 +251,7 @@ def main():
     lr = 1e-4
 
     if train:
-        saver.restore(session, "models/2017-03-29033338.912108ntm.ckpt")
+        #saver.restore(session, "models/2017-03-30145456.144986ntm.ckpt")
         for step in range(50000):
             num_instr = int(np.random.rand()*12)+8
             #num_instr = 10
@@ -265,7 +264,7 @@ def main():
                 print('step:', step)
                 print('time elapsed:', time_elapsed)
                 error, ra, wa, rh, wh, state, pred = ntm.train(batch_x, 
-                	batch_y, lr, True)
+                    batch_y, lr, True)
                 avg_error += error
 
                 sample_instr = int(np.random.rand()*num_instr)
@@ -277,8 +276,10 @@ def main():
                 print('loop train error:', step, error)
                 print('average error:', avg_error/print_thresh)
 
+                save_error(avg_error, date)
+
                 if avg_error < 0.15:
-                	lr = 1e-4
+                    lr = 1e-4
                 if np.isnan(error):
                     exit()
                 avg_error = 0
@@ -298,12 +299,16 @@ def main():
                     ultra_print(error, ra, wa, rh, wh, state, pred, batch_y,
                         sample_instr, batch_size, num_instr)
                     #print('full desired output:', batch_y)
-                    print('full output:', np.reshape(pred, 
-      					[batch_size, num_instr*2+1, -1]))
+                    #print('full output:', np.reshape(pred, 
+                    #   [batch_size, num_instr*2+1, -1]))
+                    print('minimum predicted value:', np.min(pred))
                     exit()
 
                 prev_vals=list([error, ra, wa, rh, wh, state, pred, batch_y,
                     batch_x, num_instr])
+
+            if step % 500 == 0:
+                test_run(ntm, str(date) + str(step))
 
             if step % 500 == 0 and step != 0:
                 saver.save(session, date + "ntm.ckpt")
@@ -313,44 +318,36 @@ def main():
     else:
         
         #saver.restore(session, "models/" + date + "ntm.ckpt")
-        num_instr = (20, 30, 50, 100)
+        test_run(ntm, step)
 
-        test_x, test_y = get_training_batch(2, 20, 8)
-        plt.imshow(test_x[0].T)
-        plt.show()
-        plt.imshow(test_y[0].T)
-        plt.show()
-        print('finished')
-        '''
-        for n in num_instr:
-            test_x, test_y = get_training_batch(2, n, 8)
-            plt.imshow(test_x[0].T)
-            plt.show()
-            print('finished')
+def test_run(ntm, step):
+    num_instr = (10, 20, 30)
+    
+    for n in num_instr:
+        test_x, test_y = get_training_batch(2, n, 8)
 
-            pred = ntm.run(test_x)
-            pred = np.reshape(pred, [2, n*2+1, -1])
-            print(pred.shape)
-            plt.imshow(pred[0].T)
-            plt.show()
-        '''
+        pred = ntm.run(test_x)
+        pred = np.reshape(pred, [2, n*2+1, -1])
+
+        save_matrix_plots(test_y, pred, step, n)
+
 
 def ultra_print(error, ra, wa, rh, wh, state, pred, batch_y, sample_instr, batch_size, num_instr):
-    print('read addresses:\n', str(ra[sample_instr,0:5,:]))
-    print('read head key:\n', rh['key'][sample_instr,0:5,:])
-    print('read head shift:\n', rh['shift'][sample_instr,0:5,:])
-    print('read head g:\n', rh['g'][sample_instr,0:5,:])
-    print('read head gamma:\n', rh['gamma'][sample_instr,0:5,:])
+    print('read addresses:\n', str(ra[sample_instr,8:13,:]))
+    #print('read head key:\n', rh['key'][sample_instr,0:5,:])
+    #print('read head shift:\n', rh['shift'][sample_instr,0:5,:])
+    #print('read head g:\n', rh['g'][sample_instr,0:5,:])
+    print('read head gamma:\n', np.max(rh['gamma']))
     print('\t----')    
-    print('write addresses:\n', str(wa[sample_instr,0:5,:]))
-    print('write head key:\n', wh['key'][sample_instr,0:5,:])
-    print('write head shift:\n', wh['shift'][sample_instr,0:5,:])
-    print('write head g:\n', wh['g'][sample_instr,0:5,:])
-    print('write head gamma:\n', wh['gamma'][sample_instr,0:5,:])
+    print('write addresses:\n', str(wa[sample_instr,8:13,:]))
+    #print('write head key:\n', wh['key'][sample_instr,0:5,:])
+    #print('write head shift:\n', wh['shift'][sample_instr,0:5,:])
+    #print('write head g:\n', wh['g'][sample_instr,0:5,:])
+    print('write head gamma:\n', np.max(wh['gamma']))
     print('predictions:\n', np.reshape(pred, 
-        [batch_size, num_instr*2+1, -1])[0,0:5,:])
+        [batch_size, num_instr*2+1, -1])[0,8:13,:])
     print('targets:\n', np.reshape(batch_y, 
-        [batch_size, num_instr*2+1, -1])[0,0:5,:])
+        [batch_size, num_instr*2+1, -1])[0,8:13,:])
 
 if __name__ == "__main__":
     main()
