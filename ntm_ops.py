@@ -95,7 +95,7 @@ class NTMCell(RNNCell):
 		S = self.shift_range
 		#print('m n', M, N)
 		with vs.variable_scope(scope or "ntm_cell"):
-			write_piece, read_piece = array_ops.split(inputs, [3*M+S+3, -1],
+			write_head, read_head = array_ops.split(inputs, [3*M+S+3, M+S+3],
 				axis=1)
 			mem_prev = array_ops.stack(state[0:-2], axis=1)
 			#print('state len:', len(state))
@@ -144,8 +144,7 @@ class NTMCell(RNNCell):
 				num_tiles = max(int(N / S), 0)
 				#num_tiles = 0 if num_tiles < 0 else num_tiles
 				split_loc = (N % S)
-				if num_tiles > 0 and split_loc == 0:
-					num_tiles += 1
+
 
 				print('num_tiles, split_loc:', num_tiles, split_loc)
 
@@ -205,18 +204,25 @@ class NTMCell(RNNCell):
 				return w
 
 			# Get the addresses from the write head.
-			write_pieces = array_ops.split(write_piece,
-				[M, S, 1, 1, 1, M, M], axis=1)
-			write_w = generate_address(write_pieces[0:-2], write_w_prev)
-			erase, add = write_pieces[-2], write_pieces[-1]
-
-			# Get the addresses from the read head.
-			read_pieces = array_ops.split(read_piece, [M, S, 1, 1, 1], axis=1)
+			#write_pieces = array_ops.split(write_head,
+			#	[M, S, 1, 1, 1, M, M], axis=1)
+			write_pieces, read_pieces = self.head_pieces(write_head,
+				read_head, (N, M), S)
+			write_w = generate_address(write_pieces[0:5], write_w_prev)
 			read_w = generate_address(read_pieces, read_w_prev)
 
+			#erase = math_ops.sigmoid(write_pieces[-1])
+			#add = math_ops.sigmoid(write_pieces[-2])
+			erase = write_pieces[-1]
+			add =  write_pieces[-2]
+
+			# Get the addresses from the read head.
+			#read_pieces = array_ops.split(read_head, [M, S, 1, 1, 1], axis=1)
+			#read_w = generate_address(read_pieces, read_w_prev)
+
 			# Generate the new memory matrices for each batch id.
-			write_w_tiled = array_ops.expand_dims(write_w, axis=2)
-			write_w_tiled = array_ops.tile(write_w_tiled, [1, 1, M])
+			write_w_exp = array_ops.expand_dims(write_w, axis=2)
+			write_w_tiled = array_ops.tile(write_w_exp, [1, 1, M])
 
 			erase_diag = array_ops.matrix_diag(erase)
 			add_diag = array_ops.matrix_diag(add)
@@ -266,33 +272,60 @@ class NTMCell(RNNCell):
 			np.abs(np.random.rand(batch_size, s)/100)
 			for s in state_size[0:-2]
 		]
-		one_hot = np.zeros((batch_size, state_size[-2]))
-		one_hot[:,start_bias] = 1.
-		bias_state.append(one_hot)
 
 		one_hot = np.zeros((batch_size, state_size[-1]))
-		one_hot[:,start_bias] = 1.
+		bias_state.append(one_hot)
 		bias_state.append(one_hot)
 
 		return tuple(bias_state)
 
-	'''
-	def bias_state(self, batch_size):
-		state_size = self.state_size
-		bias_state = [
-			math_ops.abs(
-				random_ops.random_normal(
-					shape=[batch_size, s], stddev=0.01,	mean=0.05))
-			for s in state_size[0:-2]
-		]
-		bias_state.append(array_ops.one_hot(
-			indices=array_ops.ones(
-				shape=[batch_size,], dtype=dtypes.uint8), 
-			depth=state_size[-2], dtype=dtypes.float32))
-		bias_state.append(array_ops.one_hot(
-			indices=array_ops.ones(
-				shape=[batch_size,], dtype=dtypes.uint8), 
-			depth=state_size[-1], dtype=dtypes.float32))
+	@staticmethod
+	def head_pieces(write_head_raw, read_head_raw, shape, shift_range, axis=1, style='tuple'):
+		N, M = shape
+		S = shift_range
+		print(write_head_raw.get_shape(), read_head_raw.get_shape())
+		write_pieces = array_ops.split(write_head_raw,
+			[M, S, 1, 1, 1, M, M], axis=axis)
+		read_pieces = array_ops.split(read_head_raw, [M, S, 1, 1, 1], axis=axis)
 
-		return tuple(bias_state)
-	'''
+		key_w, shift_w, gamma_w, beta_w, g_w, add_w, erase_w = write_pieces
+			
+		shift_w = nn_ops.softmax(shift_w)
+		gamma_w = nn_ops.softplus(gamma_w) + 1.
+		beta_w = nn_ops.softplus(beta_w)
+		g_w = math_ops.sigmoid(g_w)
+		add_w = math_ops.sigmoid(add_w)
+		erase_w = math_ops.sigmoid(erase_w)
+
+		key_r, shift_r, gamma_r, beta_r, g_r = read_pieces
+
+		shift_r = nn_ops.softmax(shift_r)
+		gamma_r = nn_ops.softplus(gamma_r) + 1.
+		beta_r = nn_ops.softplus(beta_r)
+		g_r = math_ops.sigmoid(g_r)
+
+		if style=='tuple':
+			write_head = (key_w, shift_w, gamma_w, beta_w, g_w, add_w, erase_w)
+			read_head = (key_r, shift_r, gamma_r, beta_r, g_r)
+		else:
+			write_head = \
+			{
+				'key' : key_w,
+				'shift' : shift_w,
+				'gamma' : gamma_w,
+				'beta' : beta_w,
+				'g' : g_w,
+				'add' : add_w,
+				'erase' : erase_w,
+			}
+
+			read_head = \
+			{
+				'key' : key_r,
+				'shift' : shift_r,
+				'gamma' : gamma_r,
+				'beta' : beta_r,
+				'g' : g_r,
+			}
+
+		return write_head, read_head
