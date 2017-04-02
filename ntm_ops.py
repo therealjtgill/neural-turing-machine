@@ -9,6 +9,7 @@ from tensorflow.python.framework import ops
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import clip_ops
 from tensorflow.python.ops import embedding_ops
+from tensorflow.python.ops import gen_math_ops
 from tensorflow.python.ops import init_ops
 from tensorflow.python.ops import linalg_ops
 from tensorflow.python.ops import logging_ops
@@ -124,7 +125,7 @@ class NTMCell(RNNCell):
 				#logging_ops.Print(norm_a, [norm_a])
 				#logging_ops.Print(norm_b, [norm_b])
 
-				return math_ops.divide(dot, math_ops.add(norm_a*norm_b, 1e-3))
+				return math_ops.divide(dot, math_ops.add(norm_a*norm_b, 1e-8))
 
 			def circular_convolve(shift, w_i):
 				'''
@@ -198,8 +199,8 @@ class NTMCell(RNNCell):
 				w_sharp = math_ops.pow(w_conv, gamma)
 				#print('w_sharp:', w_sharp)
 
-				w = w_sharp / math_ops.reduce_sum(w_sharp, axis=1,
-					keep_dims=True)
+				w = w_sharp / (math_ops.reduce_sum(w_sharp, axis=1,
+					keep_dims=True))
 				#print('w returned from inner func:', w)
 				return w
 
@@ -274,8 +275,11 @@ class NTMCell(RNNCell):
 		]
 
 		one_hot = np.zeros((batch_size, state_size[-1]))
-		bias_state.append(one_hot)
-		bias_state.append(one_hot)
+		one_hot[:,start_bias] = 1.
+		bias_state.append(one_hot.copy())
+		bias_state.append(one_hot.copy())
+
+		#print('one hot read/write state', one_hot)
 
 		return tuple(bias_state)
 
@@ -291,8 +295,8 @@ class NTMCell(RNNCell):
 		key_w, shift_w, gamma_w, beta_w, g_w, add_w, erase_w = write_pieces
 			
 		shift_w = nn_ops.softmax(shift_w)
-		#gamma_w = nn_ops.softplus(gamma_w) + 1.
-		gamma_w = 50.*math_ops.sigmoid(gamma_w) + 1.
+		gamma_w = gen_math_ops.minimum(nn_ops.softplus(gamma_w) + 1, 21.)
+		#gamma_w = 50.*math_ops.sigmoid(gamma_w/50.) + 1.
 		beta_w = nn_ops.softplus(beta_w)
 		g_w = math_ops.sigmoid(g_w)
 		add_w = math_ops.sigmoid(add_w)
@@ -301,8 +305,8 @@ class NTMCell(RNNCell):
 		key_r, shift_r, gamma_r, beta_r, g_r = read_pieces
 
 		shift_r = nn_ops.softmax(shift_r)
-		#gamma_r = nn_ops.softplus(gamma_r) + 1.
-		gamma_r = 50*math_ops.sigmoid(gamma_r) + 1.
+		gamma_r = gen_math_ops.minimum(nn_ops.softplus(gamma_r) + 1, 21.)
+		#gamma_r = 50*math_ops.sigmoid(gamma_r/50.) + 1.
 		beta_r = nn_ops.softplus(beta_r)
 		g_r = math_ops.sigmoid(g_r)
 

@@ -46,6 +46,9 @@ class NTM(object):
             self.feed_y = tf.placeholder(dtype=tf.float32, shape=(None, None, vec_size-1))
             self.feed_lr = tf.placeholder(dtype=tf.float32, shape=())
 
+            # Need tuple of placeholders for LSTM state 
+            # Need tuple of placeholders for NTM state
+
             batch_size = tf.shape(self.feed_x)[0]
             num_instr = tf.shape(self.feed_x)[1]
 
@@ -102,18 +105,17 @@ class NTM(object):
 
             self.L = tf.Variable(tf.random_normal([M, vec_size-1], stddev=0.01))
             self.b_L = tf.Variable(tf.random_normal([vec_size-1,], stddev=0.01))
-            #print('ntm_outputs:', self.ntm_outputs)
 
+            splits = [(num_instr-1)/2 + 1, num_instr - ((num_instr-1)/2 + 1)]
             read_values_flat = tf.reshape(self.ntm_outputs[-1], [-1,M])
             logits_flat = tf.matmul(read_values_flat, self.L) + self.b_L
-            #predictions_flat = tf.sigmoid(predictions_flat)
+            logits = tf.reshape(logits_flat, tf.shape(self.feed_y))
+            logits_split = tf.split(logits, splits, axis=1)[1]
+            logits_split_flat = tf.reshape(logits_split, [-1, vec_size-1])
 
-            #tf.clip_by_value(J, -10., 10.)
-
-            #logits_flat = tf.reshape(logits, [-1,M])
             targets_flat = tf.reshape(self.feed_y, [-1,vec_size-1])
-            #self.loss = tf.reduce_mean(tf.losses.sigmoid_cross_entropy( \
-            #    multi_class_labels=feed_y_flat, logits=logits_flat))
+            targets_split = tf.split(self.feed_y, splits, axis=1)[1]
+            targets_split_flat = tf.reshape(targets_split, [-1, vec_size-1])
 
             self.loss = tf.reduce_mean(
                 tf.nn.sigmoid_cross_entropy_with_logits(
@@ -133,7 +135,7 @@ class NTM(object):
 
             self.train_op = self.optimizer.apply_gradients(capped_grads)
 
-    def train(self, batch_x, batch_y, learning_rate=1e-4, get_ntm_outputs=False):
+    def train(self, batch_x, batch_y, learning_rate=1e-3, get_ntm_outputs=False):
         '''
         Args:
             batch_x: Batch of instructions to be sent to the controller.
@@ -155,7 +157,7 @@ class NTM(object):
         batch_size = batch_x.shape[0]
         init_state = self.ntm_cell.bias_state(batch_size)
         fetches = [self.loss, self.train_op]
-        feeds = {self.feed_x: batch_x, self.feed_y: batch_y, self.feed_lr:lr}
+        feeds = {self.feed_x: batch_x, self.feed_y: batch_y, self.feed_lr:1e-4}
 
         for i in range(len(init_state)):
             feeds[self.ntm_init_state[i]] = init_state[i]
@@ -208,9 +210,9 @@ def get_training_batch(batch_size, seq_length, num_bits):
     batch_y = np.zeros((bs, sl*2+1, nb))
     sequence = (np.random.rand(bs, sl, nb)*2).astype(int)
     
-    batch_x[:,0:sl,0:nb] = sequence[:,:,:]
-    batch_y[:,0:sl,0:nb] = sequence[:,:,:]
-    batch_y[:,sl+1:2*sl+1,0:nb] = sequence[:,:,:]
+    batch_x[:,0:sl,0:nb] = sequence[:,:,:].copy()
+    batch_y[:,0:sl,0:nb] = sequence[:,:,:].copy()
+    batch_y[:,sl+1:2*sl+1,0:nb] = sequence[:,:,:].copy()
     batch_x[:,sl,num_bits] = 1
     #batch_x = batch_y[:,:,:]
     #batch_y[:,sl+1:,0:nb] = sequence[:,:,:]
@@ -251,7 +253,7 @@ def main():
     lr = 1e-4
 
     if train:
-        #saver.restore(session, "models/2017-03-30145456.144986ntm.ckpt")
+        saver.restore(session, "models/2017-04-02073947.281558ntm.ckpt")
         for step in range(50000):
             num_instr = int(np.random.rand()*12)+8
             #num_instr = 10
@@ -333,21 +335,21 @@ def test_run(ntm, step):
 
 
 def ultra_print(error, ra, wa, rh, wh, state, pred, batch_y, sample_instr, batch_size, num_instr):
-    print('read addresses:\n', str(ra[sample_instr,8:13,:]))
+    print('read addresses:\n', str(ra[sample_instr,-5:-1,:]))
     #print('read head key:\n', rh['key'][sample_instr,0:5,:])
     #print('read head shift:\n', rh['shift'][sample_instr,0:5,:])
     #print('read head g:\n', rh['g'][sample_instr,0:5,:])
     print('read head gamma:\n', np.max(rh['gamma']))
     print('\t----')    
-    print('write addresses:\n', str(wa[sample_instr,8:13,:]))
+    print('write addresses:\n', str(wa[sample_instr,-5:-1,:]))
     #print('write head key:\n', wh['key'][sample_instr,0:5,:])
     #print('write head shift:\n', wh['shift'][sample_instr,0:5,:])
     #print('write head g:\n', wh['g'][sample_instr,0:5,:])
     print('write head gamma:\n', np.max(wh['gamma']))
     print('predictions:\n', np.reshape(pred, 
-        [batch_size, num_instr*2+1, -1])[0,8:13,:])
+        [batch_size, num_instr*2+1, -1])[0,-5:-1,:])
     print('targets:\n', np.reshape(batch_y, 
-        [batch_size, num_instr*2+1, -1])[0,8:13,:])
+        [batch_size, num_instr*2+1, -1])[0,-5:-1,:])
 
 if __name__ == "__main__":
     main()

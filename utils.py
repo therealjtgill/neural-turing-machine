@@ -45,7 +45,7 @@ def get_training_batch(batch_size, seq_length, num_bits):
     sequence = (np.random.rand(bs, sl, nb)*2).astype(int)
     
     batch_x[:,0:sl,0:nb] = sequence[:,:,:]
-    batch_y[:,0:sl,0:nb] = sequence[:,:,:]
+    #batch_y[:,0:sl,0:nb] = sequence[:,:,:]
     batch_y[:,sl+1:2*sl+1,0:nb] = sequence[:,:,:]
     batch_x[:,sl,num_bits] = 1
     #batch_x = batch_y[:,:,:]
