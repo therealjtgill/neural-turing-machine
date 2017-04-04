@@ -295,12 +295,15 @@ class NTMCell(RNNCell):
 		start_bias = int(np.random.rand()*self.N/2.)
 		
 		bias_state = [
-			np.abs(np.random.rand(batch_size, s)/100)
+			np.abs(np.random.rand(batch_size, s)/5.)
 			for s in state_size[0:-2]
 		]
 
 		one_hot = np.zeros((batch_size, state_size[-1]))
-		one_hot[:,start_bias] = 1.
+		#one_hot[:,start_bias] = 1.
+		for i in range(batch_size):
+			hot_index = int(np.random.rand()*self.N/2.)
+			one_hot[i, hot_index] = 1.
 		bias_state.append(one_hot.copy())
 		bias_state.append(one_hot.copy())
 
