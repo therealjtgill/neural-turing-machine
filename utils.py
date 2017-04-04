@@ -1,12 +1,28 @@
+
+import matplotlib
+matplotlib.use('Agg')
 import matplotlib.pyplot as plt
 import matplotlib.image as mpimg
 import numpy as np
+import os
 import warnings
 
 warnings.filterwarnings('ignore')
 
-def save_matrix_plots(targets, predictions, filename, offset=0):
+def make_dir(folder):
+	cwd = os.getcwd()
+	save_dir = os.path.join(cwd, folder)
 
+	if os.path.isdir(save_dir):
+		return save_dir
+	else:
+		os.mkdir(save_dir)
+		return save_dir
+
+def save_output_plot(targets, predictions, folder, filename):
+
+	path = make_dir(folder)
+	
 	if len(targets.shape) > 2:
 		targets = targets[0]
 
@@ -26,14 +42,29 @@ def save_matrix_plots(targets, predictions, filename, offset=0):
 	#plt.title('Targets')
 	ax1.set_ylabel('Targets')
 	
-
 	ax2 = plt.subplot(212, sharex=ax1)
 	ax2.imshow(predictions, interpolation='none', extent=predictions_extent)
 	#ax2.axis('off')
 	#plt.title('Predictions')
 	ax2.set_ylabel('Predictions')
+
+	filename = str(filename) + '.png'
 	
-	plt.savefig(str(filename) + str(offset) + '.png')
+	plt.savefig(os.path.join(path, filename))
+	plt.close()
+
+def save_address_plot(addresses, folder, filename):
+
+	path = make_dir(folder)
+	#print(addresses)
+	plt.imshow(addresses.T, interpolation='none', cmap='gray')
+	plt.xlabel('time')
+	plt.ylabel('address')
+
+	filename = str(filename) + '.png'
+
+	plt.savefig(os.path.join(path, filename))
+	plt.close()
 
 def get_training_batch(batch_size, seq_length, num_bits):
 
@@ -57,6 +88,10 @@ def get_training_batch(batch_size, seq_length, num_bits):
 
     return batch_x, batch_y
 
-def save_error(error, filename):
-	with open(filename, 'a') as f:
+def save_error(error, folder, filename):
+
+	path = make_dir(folder)
+	filename = str(filename) + '.err'
+
+	with open(os.path.join(path, filename), 'a') as f:
 		f.write(str(error) + '\n')

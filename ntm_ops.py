@@ -140,7 +140,12 @@ class NTMCell(RNNCell):
 				  shift_rev = [3, 2, 1]
 				  shift_long = [3, 2, 1, 3, 2, 1, 3, 2, 1, 3, 2  ]
 				               | orig  | tile 1 | tile 2 | split |  
+
+				This method is now simply appending a tensor of zeros to the
+				end of the shift tensor.
 				'''   
+
+				'''
 				shift_rev = array_ops.reverse(shift, axis=[1])
 				num_tiles = max(int(N / S), 0)
 				#num_tiles = 0 if num_tiles < 0 else num_tiles
@@ -160,10 +165,30 @@ class NTMCell(RNNCell):
 
 				#print('num_tiles, split_loc:', num_tiles, split_loc)
 				#print('shape of shift_long:', shift_long.get_shape())
-						
+				'''
+
+				shift_rev = array_ops.reverse(shift, axis=[1])
+				num_tiles = max(int((N - S) / S), 0)
+				zeros = array_ops.zeros_like(shift_rev)
+				#num_tiles = 0 if num_tiles < 0 else num_tiles
+				split_loc = (N % S)
+
+				#print('num_tiles, split_loc:', num_tiles, split_loc)
+
+				if num_tiles > 0:
+					zeros_long = array_ops.tile(zeros, [1, num_tiles])
+				else:
+					zeros_long = zeros
+
+				if split_loc > 0:
+					tack = array_ops.split(zeros, (split_loc, -1), axis=1)[0]
+					shift_long = array_ops.concat(
+						[shift_rev, zeros_long, tack], axis=1)
+
 				circ = []
 				for j in range(N):
-					shift_split = array_ops.split(shift_long, (j,N-j), axis=1)[::-1]
+					shift_split = array_ops.split(
+						shift_long, (j,N-j), axis=1)[::-1]
 					circ.append(array_ops.concat(shift_split, axis=1))
 
 				#return circ
@@ -267,7 +292,7 @@ class NTMCell(RNNCell):
 
 	def bias_state(self, batch_size):
 		state_size = self.state_size
-		start_bias = int(np.random.rand()*self.N/2)
+		start_bias = int(np.random.rand()*self.N/2.)
 		
 		bias_state = [
 			np.abs(np.random.rand(batch_size, s)/100)
