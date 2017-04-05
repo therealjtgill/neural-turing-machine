@@ -384,14 +384,14 @@ def test_run(ntm, folder, step):
 def ultra_print(error, ra, wa, rh, wh, state, pred, batch_y, sample_instr, batch_size, num_instr):
     print('read addresses:\n', str(ra[sample_instr,-5:-1,:]))
     #print('read head key:\n', rh['key'][sample_instr,0:5,:])
-    #print('read head shift:\n', rh['shift'][sample_instr,0:5,:])
-    #print('read head g:\n', rh['g'][sample_instr,0:5,:])
+    print('read head shift:\n', rh['shift'][sample_instr,0:5,:])
+    print('read head g:\n', rh['g'][sample_instr,0:5,:])
     print('read head gamma:\n', np.max(rh['gamma']))
     print('\t----')    
     print('write addresses:\n', str(wa[sample_instr,-5:-1,:]))
     #print('write head key:\n', wh['key'][sample_instr,0:5,:])
-    #print('write head shift:\n', wh['shift'][sample_instr,0:5,:])
-    #print('write head g:\n', wh['g'][sample_instr,0:5,:])
+    print('write head shift:\n', wh['shift'][sample_instr,0:5,:])
+    print('write head g:\n', wh['g'][sample_instr,0:5,:])
     print('write head gamma:\n', np.max(wh['gamma']))
     #print('predictions:\n', np.reshape(pred, 
     #    [batch_size, num_instr*2+1, -1])[0,-5:-1,:])

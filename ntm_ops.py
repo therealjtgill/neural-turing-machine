@@ -170,10 +170,9 @@ class NTMCell(RNNCell):
 				shift_rev = array_ops.reverse(shift, axis=[1])
 				num_tiles = max(int((N - S) / S), 0)
 				zeros = array_ops.zeros_like(shift_rev)
-				#num_tiles = 0 if num_tiles < 0 else num_tiles
+				
 				split_loc = (N % S)
-				center = int(S/2)
-
+				center = int(S/2)+1
 				#print('num_tiles, split_loc:', num_tiles, split_loc)
 
 				if num_tiles > 0:
@@ -236,44 +235,37 @@ class NTMCell(RNNCell):
 				return w
 
 			# Get the addresses from the write head.
-			#write_pieces = array_ops.split(write_head,
-			#	[M, S, 1, 1, 1, M, M], axis=1)
 			write_pieces, read_pieces = self.head_pieces(write_head,
 				read_head, (N, M), S)
 			write_w = generate_address(write_pieces[0:5], write_w_prev)
 			read_w = generate_address(read_pieces, read_w_prev)
 
-			#erase = math_ops.sigmoid(write_pieces[-1])
-			#add = math_ops.sigmoid(write_pieces[-2])
-			erase = write_pieces[-1]
-			add =  write_pieces[-2]
-
-			# Get the addresses from the read head.
-			#read_pieces = array_ops.split(read_head, [M, S, 1, 1, 1], axis=1)
-			#read_w = generate_address(read_pieces, read_w_prev)
+			#erase = write_pieces[-1]
+			#add =  write_pieces[-2]
+			erase = array_ops.expand_dims(write_pieces[-1], axis=2)
+			add = array_ops.expand_dims(write_pieces[-2], axis=2)
 
 			# Generate the new memory matrices for each batch id.
 			write_w_exp = array_ops.expand_dims(write_w, axis=2)
-			write_w_tiled = array_ops.tile(write_w_exp, [1, 1, M])
+			#write_w_tiled = array_ops.tile(write_w_exp, [1, 1, M])
 
-			erase_diag = array_ops.matrix_diag(erase)
-			add_diag = array_ops.matrix_diag(add)
+			#erase_diag = array_ops.matrix_diag(erase)
+			#add_diag = array_ops.matrix_diag(add)
 
-			erase_product = 1. - math_ops.matmul(write_w_tiled, erase_diag)
-			add_product = math_ops.matmul(write_w_tiled, add_diag)
+			#erase_product = 1. - math_ops.matmul(write_w_tiled, erase_diag)
+			#add_product = math_ops.matmul(write_w_tiled, add_diag)
+			erase_box = math_ops.matmul(write_w_exp, tf.transpose(erase))
+			add_box = math_ops.matmul(write_w_exp, tf.transpose(add))
 
-			mem_new = mem_prev*erase_product + add_product
+			mem_new = mem_prev*(1. - erase_box) + add_box
 			#print('memory:', mem_new)
 
 			# Get the values read from the memory matrix.
 			read_w_exp = array_ops.expand_dims(read_w, axis=1)
 
-			#print('read/write addresses', read_w, write_w)
 			reads = array_ops.squeeze(math_ops.matmul(read_w_exp, mem_new))
 			state_tuple = tuple(array_ops.unstack(mem_new, axis=1)) + \
 				(write_w, read_w)
-			#print('returned stuff', state_tuple + (reads,))
-			#print('reads:', reads)
 			return state_tuple + (reads,), state_tuple
 
 	def small_state(self, batch_size):
@@ -305,13 +297,15 @@ class NTMCell(RNNCell):
 			for s in state_size[0:-2]
 		]
 
-		one_hot = np.zeros((batch_size, state_size[-1]))
+		normal = np.zeros((batch_size, state_size[-1]))
+		normal += 1./float(state_size[-1])
+		#one_hot = np.zeros((batch_size, state_size[-1]))
 		#one_hot[:,start_bias] = 1.
-		for i in range(batch_size):
-			hot_index = int(np.random.rand()*self.N/2.)
-			one_hot[i, hot_index] = 1.
-		bias_state.append(one_hot.copy())
-		bias_state.append(one_hot.copy())
+		#for i in range(batch_size):
+		#	hot_index = int(np.random.rand()*self.N/2.)
+		#	one_hot[i, hot_index] = 1.
+		bias_state.append(normal.copy())
+		bias_state.append(normal.copy())
 
 		#print('one hot read/write state', one_hot)
 
