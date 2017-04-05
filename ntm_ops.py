@@ -172,6 +172,7 @@ class NTMCell(RNNCell):
 				zeros = array_ops.zeros_like(shift_rev)
 				#num_tiles = 0 if num_tiles < 0 else num_tiles
 				split_loc = (N % S)
+				center = int(S/2)
 
 				#print('num_tiles, split_loc:', num_tiles, split_loc)
 
@@ -185,11 +186,16 @@ class NTMCell(RNNCell):
 					shift_long = array_ops.concat(
 						[shift_rev, zeros_long, tack], axis=1)
 
+				center_split = array_ops.split(
+					shift_long, (center, -1), axis=1)
+				shift_long = array_ops.concat(
+					[center_split[1], center_split[0]], axis=1)
+
 				circ = []
 				for j in range(N):
-					shift_split = array_ops.split(
-						shift_long, (j,N-j), axis=1)[::-1]
-					circ.append(array_ops.concat(shift_split, axis=1))
+					shift_split = array_ops.split(shift_long, (j,N-j), axis=1)
+					circ.append(array_ops.concat(
+						[shift_split[1], shift_split[0]], axis=1))
 
 				#return circ
 				w_conv = []
@@ -295,7 +301,7 @@ class NTMCell(RNNCell):
 		start_bias = int(np.random.rand()*self.N/2.)
 		
 		bias_state = [
-			np.abs(np.random.rand(batch_size, s)/5.)
+			np.abs(np.random.rand(batch_size, s))
 			for s in state_size[0:-2]
 		]
 

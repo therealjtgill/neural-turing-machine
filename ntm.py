@@ -92,10 +92,9 @@ class NTM(object):
             #    [self.read_head[k] for k in read_keys], axis=2)
 
             cell_input = tf.concat([self.write_raw, self.read_raw], axis=2)
-            #print(cell_input)
+            
             self.ntm_cell = NTMCell(mem_size=(N,M), shift_range=S)
-            #ntm_state = ntm_cell.bias_state(batch_size)
-            #print('init state:', self.ntm_init_state)
+            
             self.write_head, self.read_head = NTMCell.head_pieces(
                 self.write_raw, self.read_raw, mem_size, S, 2, 'dict')
 
@@ -106,6 +105,7 @@ class NTM(object):
             self.ntm_outputs, self.last_ntm_state = tf.nn.dynamic_rnn( \
                 cell=self.ntm_cell, initial_state=self.ntm_init_state,
                 inputs=cell_input, dtype=tf.float32, parallel_iterations=64)
+
             self.read_addresses = self.ntm_outputs[-2]
             self.write_addresses = self.ntm_outputs[-3]
 
@@ -115,22 +115,13 @@ class NTM(object):
             #splits = [(num_instr-1)/2 + 1, num_instr - ((num_instr-1)/2 + 1)]
             read_values_flat = tf.reshape(self.ntm_outputs[-1], [-1,M])
             logits_flat = tf.matmul(read_values_flat, self.L) + self.b_L
-            #logits = tf.reshape(logits_flat, tf.shape(self.feed_y))
-            #logits_split = tf.split(logits, splits, axis=1)[1]
-            #logits_split_flat = tf.reshape(logits_split, [-1, vec_size-1])
-
             targets_flat = tf.reshape(self.feed_y, [-1,vec_size-1])
-            #targets_split = tf.split(self.feed_y, splits, axis=1)[1]
-            #targets_split_flat = tf.reshape(targets_split, [-1, vec_size-1])
 
             self.loss = tf.reduce_mean(
                 tf.nn.sigmoid_cross_entropy_with_logits(
                     labels=targets_flat, logits=logits_flat))
 
             self.predictions_flat = tf.sigmoid(logits_flat)
-            #self.loss = tf.reduce_mean(
-            #    -1*targets_flat*tf.log(predictions_flat) - \
-            #    (1-targets_flat)*tf.log(1-predictions_flat))
 
             self.optimizer = tf.train.RMSPropOptimizer(
                 learning_rate=self.feed_lr, momentum=0.9)
@@ -140,8 +131,9 @@ class NTM(object):
                 for grad, var in grads_and_vars]
 
             self.train_op = self.optimizer.apply_gradients(capped_grads)
+            #self.train_op = self.optimizer.minimize(self.loss)
 
-    def train(self, batch_x, batch_y, learning_rate=1e-3, get_ntm_outputs=False):
+    def train_batch(self, batch_x, batch_y, learning_rate=1e-4, get_ntm_outputs=False):
         '''
         Args:
             batch_x: Batch of instructions to be sent to the controller.
@@ -159,16 +151,6 @@ class NTM(object):
               'get_ntm_outputs' flag is set to True.
         '''
         
-        #num_instr = int((batch_x.shape[1] - 1)/2)
-
-        #batch_x_run = batch_x[:, 0:num_instr+1, :].copy()
-        #batch_x_train = batch_x[:, num_instr+1:2*num_instr+1, :].copy()
-
-        #run_out, run_state = self.run(batch_x_run)
-        #ntm_init_state = run_state
-
-        #batch_y_train = batch_y[:, num_instr+1:2*num_instr+1, :].copy()
-        
         lr = learning_rate
         batch_size = batch_x.shape[0]
         ntm_init_state = self.ntm_cell.bias_state(batch_size)
@@ -177,8 +159,7 @@ class NTM(object):
             [np.zeros((batch_size, s)) for s in self.lstm_cell.state_size])
         fetches = [self.loss, self.train_op]
         feeds = {self.feed_x: batch_x, self.feed_y: batch_y, self.feed_lr:lr}
-        #feeds = {self.feed_x:batch_x_train, self.feed_y:batch_y_train, self.feed_lr:lr}
-
+        
         for i in range(len(ntm_init_state)):
             feeds[self.ntm_init_state[i]] = ntm_init_state[i]
 
@@ -198,47 +179,29 @@ class NTM(object):
             error, _ = self.session.run(fetches, feeds)
             #print('random state:')
             return error
-        
-    def run(self, test_x, get_ntm_outputs=False):
-        '''
+
+    def run_once(self, test_x):
+    	'''
+    	Grabs the read/write addresses and output from running the NTM with
+    	'test_x' as the input. Currently the method only tests the first
+    	set of instructions represented by batch_x.
         Args:
             test_x: Batch of instructions to be sent to the controller for
               testing.
               (batch_size, num_instr, num_bits)
-            get_ntm_outputs: Boolean value indicating whether the outputs of
-              the NTM should be returned along with the batch training error.
 
         Returns:
-            outputs: The full output of the NTM for each batch and instruction
-              sent to the NTM.
+            output_block: The full output of the NTM for each batch and 
+              instruction sent to the NTM; a 2D numpy array.
+            write_addresses_block: The full set of write addresses used in this
+              sequence of tasks; a 2D numpy array.
+            read_addresses_block: The full set of read addresses used in this
+              sequence of tasks; a 2D numpy array.
         '''
 
-        # Needs to be modified to send sequences to the network one instruction
-        # at a time (but across multiple batches).
-        # This will require saving the states returned from the LSTM and NTM
-        # for each sequence slice.
+        if (test_x.shape[0] < 2):
+        	raise Exception('The batch size of the test input should be > 2.')
 
-        batch_size = test_x.shape[0]
-        num_seq = test_x.shape[1]
-        ntm_init_state = self.ntm_cell.bias_state(batch_size)
-        #lstm_init_state = self.lstm_cell.zero_state(batch_size, dtype=tf.float32)
-        lstm_init_state = tuple(
-            [np.zeros((batch_size, s)) for s in self.lstm_cell.state_size])
-
-        fetches = [self.predictions_flat, self.last_ntm_state]
-        feeds = {self.feed_x: test_x}
-
-        for i in range(len(ntm_init_state)):
-            feeds[self.ntm_init_state[i]] = ntm_init_state[i]
-
-        for i in range(len(lstm_init_state)):
-            feeds[self.lstm_init_state[i]] = lstm_init_state[i]
-
-        outputs, state = self.session.run(fetches, feeds)
-
-        return outputs, state
-
-    def run_(self, test_x):
         batch_size = test_x.shape[0]
         num_seq = test_x.shape[1]
         sequences = np.split(test_x, num_seq, axis=1)
@@ -275,6 +238,29 @@ class NTM(object):
         return output_block, write_addresses_block, read_addresses_block
 
 def get_training_batch(batch_size, seq_length, num_bits):
+	'''
+	Returns batches of data for training or testing. For the copy task, the
+	data returned is in the form:
+	  input:   [pattern], [delimiter], [zeros]
+	  targets: [zeros],   [zerp],      [pattern]
+	Where 'pattern' is a sequence of num_bits binary values that the network
+	is expected to internalize and replicate after seeing the delimiter value.
+
+	Args:
+		batch_size: The number of batches of sequences that the network should
+		  be trained on (integer).
+		seq_length: The length of the sequences of binary vectors that the 
+		  network should reproduce.
+		num_bits: The number of bits in each binary array.
+
+	Returns:
+		batch_x: Batch of sequences of binary vectors that the network will be
+		  trained on.
+		  [batch_size, seq_length*2 + 1, num_bits + 1]
+		batch_y: Batch of sequences of binary vectors that the network should
+		  produce after being presented with batch_x.
+		  [batch_size, seq_length*2 + 1, num_bits]
+	'''
 
     bs = batch_size
     sl = seq_length
@@ -284,15 +270,10 @@ def get_training_batch(batch_size, seq_length, num_bits):
     sequence = (np.random.rand(bs, sl, nb)*2).astype(int)
     
     batch_x[:,0:sl,0:nb] = sequence[:,:,:].copy()
-    batch_y[:,0:sl,0:nb] = sequence[:,:,:].copy()
+    #batch_y[:,0:sl,0:nb] = sequence[:,:,:].copy()
     batch_y[:,sl+1:2*sl+1,0:nb] = sequence[:,:,:].copy()
     batch_x[:,sl,num_bits] = 1.
-    #batch_x = batch_y[:,:,:]
-    #batch_y[:,sl+1:,0:nb] = sequence[:,:,:]
-    #batch_y = batch_y[:,:,0:num_bits]
     batch_x[:,sl+1:sl*2+1,:] = 0.
-
-    #print(str(batch_x[0,0:2,:]))
 
     return batch_x, batch_y
 
@@ -334,7 +315,7 @@ def main():
                 print('step:', step)
                 #print('time elapsed:', time_elapsed)
 
-                error, ra, wa, rh, wh, state, pred = ntm.train(batch_x, 
+                error, ra, wa, rh, wh, state, pred = ntm.train_batch(batch_x, 
                     batch_y, lr, True)
                 avg_error += error
 
@@ -353,7 +334,8 @@ def main():
                     exit()
                 avg_error = 0
             else:
-                error, ra, wa, rh, wh, state, pred = ntm.train(batch_x, batch_y, lr, True)
+                error, ra, wa, rh, wh, state, pred = ntm.train_batch(batch_x,
+                	batch_y, lr, True)
                 avg_error += error
                 print('step:', step, error, 'sequence length:', num_instr)
 
@@ -367,9 +349,6 @@ def main():
                     batch_x=prev_vals[-2]
                     ultra_print(error, ra, wa, rh, wh, state, pred, batch_y,
                         sample_instr, batch_size, num_instr)
-                    #print('full desired output:', batch_y)
-                    #print('full output:', np.reshape(pred, 
-                    #   [batch_size, num_instr*2+1, -1]))
                     print('minimum predicted value:', np.min(pred))
                     exit()
 
@@ -392,10 +371,10 @@ def test_run(ntm, folder, step):
     for n in num_instr:
         test_x, test_y = get_training_batch(2, n, 8)
 
-        pred, w_add, r_add = ntm.run_(test_x)
+        pred, w_add, r_add = ntm.run_once(test_x)
         #pred = np.reshape(pred, [2, n*2 + 1, -1])
 
-        suffix = str(n) + str(step)
+        suffix = str(n) + '-' + str(step)
 
         save_output_plot(test_y, pred, folder, 'output' + suffix)
         save_address_plot(w_add, folder, 'writeadd' + suffix)
