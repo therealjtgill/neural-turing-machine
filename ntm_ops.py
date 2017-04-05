@@ -254,8 +254,10 @@ class NTMCell(RNNCell):
 
 			#erase_product = 1. - math_ops.matmul(write_w_tiled, erase_diag)
 			#add_product = math_ops.matmul(write_w_tiled, add_diag)
-			erase_box = math_ops.matmul(write_w_exp, tf.transpose(erase))
-			add_box = math_ops.matmul(write_w_exp, tf.transpose(add))
+			erase_box = math_ops.matmul(write_w_exp, 
+						  array_ops.transpose(erase), perm=[0, 2, 1])
+			add_box = math_ops.matmul(write_w_exp, 
+						  array_ops.transpose(add), perm=[0, 2, 1])
 
 			mem_new = mem_prev*(1. - erase_box) + add_box
 			#print('memory:', mem_new)
