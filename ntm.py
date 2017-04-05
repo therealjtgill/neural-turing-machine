@@ -109,10 +109,11 @@ class NTM(object):
             self.read_addresses = self.ntm_outputs[-2]
             self.write_addresses = self.ntm_outputs[-3]
 
-            self.L = tf.Variable(tf.random_normal([M, vec_size-1], stddev=0.01))
-            self.b_L = tf.Variable(tf.random_normal([vec_size-1,], stddev=0.01))
+            self.L = tf.Variable(tf.random_normal([M, vec_size-1], stddev=0.01),
+                trainable=False)
+            self.b_L = tf.Variable(tf.random_normal([vec_size-1,], stddev=0.01),
+                trainable=False)
 
-            #splits = [(num_instr-1)/2 + 1, num_instr - ((num_instr-1)/2 + 1)]
             read_values_flat = tf.reshape(self.ntm_outputs[-1], [-1,M])
             logits_flat = tf.matmul(read_values_flat, self.L) + self.b_L
             targets_flat = tf.reshape(self.feed_y, [-1,vec_size-1])
@@ -181,10 +182,10 @@ class NTM(object):
             return error
 
     def run_once(self, test_x):
-    	'''
-    	Grabs the read/write addresses and output from running the NTM with
-    	'test_x' as the input. Currently the method only tests the first
-    	set of instructions represented by batch_x.
+        '''
+        Grabs the read/write addresses and output from running the NTM with
+        'test_x' as the input. Currently the method only tests the first
+        set of instructions represented by batch_x.
         Args:
             test_x: Batch of instructions to be sent to the controller for
               testing.
@@ -200,7 +201,7 @@ class NTM(object):
         '''
 
         if (test_x.shape[0] < 2):
-        	raise Exception('The batch size of the test input should be > 2.')
+            raise Exception('The batch size of the test input should be > 2.')
 
         batch_size = test_x.shape[0]
         num_seq = test_x.shape[1]
@@ -213,9 +214,13 @@ class NTM(object):
         outputs = []
         write_addresses = []
         read_addresses = []
+        read_shifts = []
+        write_shifts = []
+        read_forgets = []
+        write_forgets = []
         for seq in sequences:
             fetches = [self.predictions_flat, self.last_ntm_state,
-                self.last_lstm_state]
+                self.last_lstm_state, self.read_head, self.write_head]
             feeds = {self.feed_x: seq}
 
             for i in range(len(ntm_init_state)):
@@ -224,43 +229,55 @@ class NTM(object):
             for i in range(len(lstm_init_state)):
                 feeds[self.lstm_init_state[i]] = lstm_init_state[i]
 
-            output, ntm_init_state, lstm_init_state = \
+            output, ntm_init_state, lstm_init_state, read_head, write_head = \
                 self.session.run(fetches, feeds)
 
             outputs.append(output[0])
             write_addresses.append(ntm_init_state[-2][0])
             read_addresses.append(ntm_init_state[-1][0])
+            read_shifts.append(read_head['shift'][0])
+            write_shifts.append(write_head['shift'][0])
+            read_forgets.append(read_head['g'][0])
+            write_forgets.append(read_head['g'][0])
 
         output_block = np.array(outputs)
-        write_addresses_block = np.array(write_addresses)
-        read_addresses_block = np.array(read_addresses)
+        write_addresses_block = np.squeeze(np.array(write_addresses))
+        read_addresses_block = np.squeeze(np.array(read_addresses))
+        read_shifts_block = np.squeeze(np.array(read_shifts))
+        write_shifts_block = np.squeeze(np.array(write_shifts))
+        read_forgets_block = np.squeeze(np.array(read_forgets), axis=1)
+        write_forgets_block = np.squeeze(np.array(write_forgets), axis=1)
 
-        return output_block, write_addresses_block, read_addresses_block
+        print('forgets shape:', read_forgets_block.shape)
+
+        return output_block, write_addresses_block, read_addresses_block, \
+            read_shifts_block, write_shifts_block, read_forgets_block, \
+            write_forgets_block
 
 def get_training_batch(batch_size, seq_length, num_bits):
-	'''
-	Returns batches of data for training or testing. For the copy task, the
-	data returned is in the form:
-	  input:   [pattern], [delimiter], [zeros]
-	  targets: [zeros],   [zerp],      [pattern]
-	Where 'pattern' is a sequence of num_bits binary values that the network
-	is expected to internalize and replicate after seeing the delimiter value.
+    '''
+    Returns batches of data for training or testing. For the copy task, the
+    data returned is in the form:
+      input:   [pattern], [delimiter], [zeros]
+      targets: [zeros],   [zerp],      [pattern]
+    Where 'pattern' is a sequence of num_bits binary values that the network
+    is expected to internalize and replicate after seeing the delimiter value.
 
-	Args:
-		batch_size: The number of batches of sequences that the network should
-		  be trained on (integer).
-		seq_length: The length of the sequences of binary vectors that the 
-		  network should reproduce.
-		num_bits: The number of bits in each binary array.
+    Args:
+        batch_size: The number of batches of sequences that the network should
+          be trained on (integer).
+        seq_length: The length of the sequences of binary vectors that the 
+          network should reproduce.
+        num_bits: The number of bits in each binary array.
 
-	Returns:
-		batch_x: Batch of sequences of binary vectors that the network will be
-		  trained on.
-		  [batch_size, seq_length*2 + 1, num_bits + 1]
-		batch_y: Batch of sequences of binary vectors that the network should
-		  produce after being presented with batch_x.
-		  [batch_size, seq_length*2 + 1, num_bits]
-	'''
+    Returns:
+        batch_x: Batch of sequences of binary vectors that the network will be
+          trained on.
+          [batch_size, seq_length*2 + 1, num_bits + 1]
+        batch_y: Batch of sequences of binary vectors that the network should
+          produce after being presented with batch_x.
+          [batch_size, seq_length*2 + 1, num_bits]
+    '''
 
     bs = batch_size
     sl = seq_length
@@ -302,7 +319,7 @@ def main():
     lr = 1e-4
 
     if train:
-        #saver.restore(session, "models/2017-04-02073947.281558ntm.ckpt")
+        
         for step in range(50000):
             num_instr = int(np.random.rand()*12)+8
             #num_instr = 10
@@ -335,7 +352,7 @@ def main():
                 avg_error = 0
             else:
                 error, ra, wa, rh, wh, state, pred = ntm.train_batch(batch_x,
-                	batch_y, lr, True)
+                    batch_y, lr, True)
                 avg_error += error
                 print('step:', step, error, 'sequence length:', num_instr)
 
@@ -371,7 +388,8 @@ def test_run(ntm, folder, step):
     for n in num_instr:
         test_x, test_y = get_training_batch(2, n, 8)
 
-        pred, w_add, r_add = ntm.run_once(test_x)
+        pred, w_add, r_add, r_shifts, w_shifts, r_forget, w_forget = \
+            ntm.run_once(test_x)
         #pred = np.reshape(pred, [2, n*2 + 1, -1])
 
         suffix = str(n) + '-' + str(step)
@@ -379,6 +397,10 @@ def test_run(ntm, folder, step):
         save_output_plot(test_y, pred, folder, 'output' + suffix)
         save_address_plot(w_add, folder, 'writeadd' + suffix)
         save_address_plot(r_add, folder, 'readadd' + suffix)
+        save_address_plot(w_shifts, folder, 'writeshift' + suffix)
+        save_address_plot(r_shifts, folder, 'readshift' + suffix)
+        save_address_plot(w_forget, folder, 'writeforget' + suffix)
+        save_address_plot(r_forget, folder, 'readforget' + suffix)
 
 
 def ultra_print(error, ra, wa, rh, wh, state, pred, batch_y, sample_instr, batch_size, num_instr):
