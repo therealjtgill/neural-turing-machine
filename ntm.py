@@ -176,15 +176,15 @@ class NTM(object):
                 feeds[self.lstm_init_state[i]] = lstm_init_state[i]
 
             output, ntm_init_state, lstm_init_state, \
-                write_head, read_head = self.sess.run(fetches, feeds)
+                read_head, write_head = self.sess.run(fetches, feeds)
 
-            outputs.append(output[0])
-            w_read.append(ntm_init_state[-2][0])
-            w_write.append(ntm_init_state[-1][0])
-            g_read.append(read_head['g'][0,0,:])
-            g_write.append(write_head['g'][0,0,:])
-            s_read.append(read_head['shift'][0,0,:])
-            s_write.append(write_head['shift'][0,0,:])
+            outputs.append(output[0].copy())
+            w_read.append(ntm_init_state[-2][0].copy())
+            w_write.append(ntm_init_state[-1][0].copy())
+            g_read.append(read_head['g'][0,0,:].copy())
+            g_write.append(write_head['g'][0,0,:].copy())
+            s_read.append(read_head['shift'][0,0,:].copy())
+            s_write.append(write_head['shift'][0,0,:].copy())
 
         output_b = np.squeeze(np.array(outputs))
         w_read_b = np.array(w_read)
@@ -219,7 +219,7 @@ def copy_task_batch(batch_size, seq_length, num_bits):
 
 def main():
     
-    mem_shape=(32,15)
+    mem_shape=(128,15)
     batch_size = 64
     avg_error = 0
     lr = 1e-4
@@ -271,7 +271,7 @@ def main():
             
         if step % save_threshold == 0:
             saver.save(session, os.path.join(save_dir, "model.ntm.ckpt"))
-            seq_length = (10, 20, 30)
+            seq_length = (10, 20, 30, 50, 100)
 
             for s in seq_length:
                 test_x, test_y = copy_task_batch(2, s, output_size)
