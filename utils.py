@@ -38,6 +38,8 @@ def save_double_plot(plot1, plot2, folder, filename, ylabel1='', ylabel2=''):
     plot1_extent = [0, plot1.shape[1], 0, plot1.shape[0]]
     plot2_extent = [0, plot2.shape[1], 0, plot2.shape[0]]
 
+    fig = plt.gcf()
+    fig.set_size_inches(16, 9)
     plt.figure(1)
     ax1 = plt.subplot(211)
     ax1.imshow(plot1, interpolation='none', extent=plot1_extent)
@@ -53,7 +55,7 @@ def save_double_plot(plot1, plot2, folder, filename, ylabel1='', ylabel2=''):
 
     filename = str(filename) + '.png'
     
-    plt.savefig(os.path.join(path, filename))
+    plt.savefig(os.path.join(path, filename), dpi=100)
     plt.close()
 
 def save_single_plot(val, folder, filename, ylabel=''):

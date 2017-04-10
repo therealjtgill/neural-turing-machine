@@ -130,6 +130,7 @@ class NTMCell(RNNCell):
             
         shift_w = nn_ops.softmax(shift_w + shift_bias)
         gamma_w = gen_math_ops.minimum(nn_ops.softplus(gamma_w) + 1, 21.)
+        #gamma_w = 50.*math_ops.sigmoid(gamma_w/50.) + 1.
         beta_w = nn_ops.softplus(beta_w)
         g_w = math_ops.sigmoid(g_w)
         add_w = math_ops.sigmoid(add_w)
@@ -139,6 +140,7 @@ class NTMCell(RNNCell):
 
         shift_r = nn_ops.softmax(shift_r + shift_bias)
         gamma_r = gen_math_ops.minimum(nn_ops.softplus(gamma_r) + 1, 21.)
+        #gamma_r = 50*math_ops.sigmoid(gamma_r/50.) + 1.
         beta_r = nn_ops.softplus(beta_r)
         g_r = math_ops.sigmoid(g_r)
 
@@ -185,7 +187,8 @@ def circular_convolution(shift, w_i, N, S, zero_pad=False):
     zeros = array_ops.zeros_like(shift)
     
     split_loc = N % S
-    center = int(S/2) + 1
+    #center = int(S/2) + 1
+    center = 1
 
     if not zero_pad:
         num_tiles = max(int(N/S), 0)
@@ -198,7 +201,7 @@ def circular_convolution(shift, w_i, N, S, zero_pad=False):
             tack = array_ops.split(shift, [split_loc, -1], axis=1)[0]
             shift_long = array_ops.concat([shift_tile, tack], axis=1)
 
-        #shift_rev = array_ops.reverse(shift_long, axis=[1])
+        shift_rev = array_ops.reverse(shift_long, axis=[1])
 
     else:
         num_tiles = max(int((N - S)/S), 0)
@@ -211,15 +214,15 @@ def circular_convolution(shift, w_i, N, S, zero_pad=False):
             tack = array_ops.split(zeros, [split_loc, -1], axis=1)[0]
             shift_long = array_ops.concat([shift, zeros_tile, tack], axis=1)
 
-    shift_rev = array_ops.reverse(shift_long, axis=[1])
+        shift_rev = array_ops.reverse(shift_long, axis=[1])
 
     #center_split = array_ops.split(shift_long, [center, -1], axis=1)
     #shift_long = array_ops.concat([center_split[1], center_split[0]], axis=1)
 
     circ = []
     for j in range(N):
-    	loc = (j + 1) % N
-        shift_split = array_ops.split(shift_long, [N-loc, loc], axis=1)
+        loc = (j + 1) % N
+        shift_split = array_ops.split(shift_rev, [N-loc, loc], axis=1)
         circ.append(array_ops.concat([shift_split[1], shift_split[0]], axis=1))
 
     w_conv = [math_ops.reduce_sum(w_i*c, axis=1) for c in circ]
