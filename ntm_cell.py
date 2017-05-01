@@ -41,7 +41,6 @@ class NTMCell(RNNCell):
         '''
         Return only the value that's read from the memory matrix.
         '''
-        #return self.M*self.N + 2*self.N
         return self.M
 
     def __call__(self, inputs, state, scope=None):
@@ -104,8 +103,6 @@ class NTMCell(RNNCell):
         bias_state.append(normal.copy())
         bias_state.append(one_hot.copy())
 
-        #print('one hot read/write state', one_hot)
-
         return tuple(bias_state)
 
     @staticmethod
@@ -120,11 +117,13 @@ class NTMCell(RNNCell):
         # have to concatenate/split crap inside of ntmagain.py
 
         splits = [M+S+3, 3*M+S+3]
-        read_head_raw, write_head_raw = array_ops.split(head, splits, axis=axis)
+        read_head_raw, write_head_raw = array_ops.split(head, splits,
+        	axis=axis)
 
         write_pieces = array_ops.split(write_head_raw,
             [M, S, 1, 1, 1, M, M], axis=axis)
-        read_pieces = array_ops.split(read_head_raw, [M, S, 1, 1, 1], axis=axis)
+        read_pieces = array_ops.split(read_head_raw, [M, S, 1, 1, 1],
+        	axis=axis)
 
         key_w, shift_w, gamma_w, beta_w, g_w, add_w, erase_w = write_pieces
             
@@ -145,7 +144,8 @@ class NTMCell(RNNCell):
         g_r = math_ops.sigmoid(g_r)
 
         if style=='tuple':
-            write_head = (key_w, shift_w, gamma_w, beta_w, g_w, add_w, erase_w)
+            write_head = (key_w, shift_w, gamma_w, beta_w, g_w,
+            	add_w, erase_w)
             read_head = (key_r, shift_r, gamma_r, beta_r, g_r)
         else:
             write_head = \
