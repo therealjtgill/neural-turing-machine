@@ -59,12 +59,68 @@ def associative_recall_task_batch(batch_size, seq_length,
     pre_y.append(sequences[(recall_symbol_index + 1) % ns])
     batch_y = np.concatenate(tuple(pre_y), axis=1)[:,:,0:nb]
 
-
     #print('training batch shapes:')
     #print(batch_x.shape)
     #print(batch_y.shape)
 
     return batch_x, batch_y
+
+def priority_sort_task_batch(batch_size, seq_length, num_bits=6):
+    pre_x = []
+    pre_y = []
+    bs = batch_size
+    sl = seq_length
+    nb = num_bits
+
+    for _ in range(batch_size):
+        patterns = []
+        priorities = []
+        for i in range(sl):
+            patterns.append(np.random.randint(2, size=[1, nb, 1]) - 0.)
+            priorities.append(np.random.rand(1, 1, 1))
+
+        sorted_patterns = []
+        sorted_priorities = priorities.copy()
+
+        # Generic bubble sort for putting prioritized items in the correct
+        # order for training.
+        changed = True
+        while changed:
+            changed = False
+            for i in range(len(sorted_priorities) - 1):
+                if sorted_priorities[i] > sorted_priorities[i+1]:
+                    sorted_priorities[i], sorted_priorities[i+1] = \
+                        sorted_priorities[i+1], sorted_priorities[i]
+                    changed = True
+        for i in range(len(sorted_priorities)):
+            index = priorities.index(sorted_priorities[i])
+            sorted_patterns.append(patterns[index])
+
+        # The best sort algorithms have time complexity of O(n*logn), so
+        # we want the NTM to learn to sort in at most this amount of time.
+        blank_length = int(float(sl)*np.log10(float(sl))) + 1
+        blank_x = np.zeros((1, nb + 1, blank_length + sl))
+        blank_y = np.zeros((1, nb, blank_length + sl))
+
+        # spa = sorted patterns
+        spa_mat = np.concatenate(sorted_patterns, axis=2)
+
+        # spr = sorted priorities
+        # prpa = priorities and patterns
+        pr_mat = np.concatenate(priorities, axis=2)
+        pa_mat = np.concatenate(patterns, axis=2)
+        prpa = np.concatenate([pr_mat, pa_mat], axis=1)
+
+        pre_x.append(np.concatenate([prpa, blank_x], axis=2))
+        pre_y.append(np.concatenate([blank_y, spa_mat], axis=2))
+
+    #batch_x = np.concatenate(pre_x, axis=0)
+    #batch_y = np.concatenate(pre_y, axis=0)
+    batch_x = np.transpose(np.concatenate(pre_x, axis=0), (0, 2, 1))
+    batch_y = np.transpose(np.concatenate(pre_y, axis=0), (0, 2, 1))
+
+    return batch_x, batch_y
+
 
 def train_copy_task(ntm, date, save_dir, session):
 
@@ -171,6 +227,7 @@ def train_associative_recall_task(ntm, date, save_dir, session):
         if step % save_threshold == 0:
             saver.save(session, os.path.join(save_dir, "ar_model.ntm.ckpt"))
             seq_length = (2, 3, 5, 8)
+            num_sequences = 3
 
             for s in seq_length:
                 test_x, test_y = associative_recall_task_batch(2, 
@@ -180,7 +237,69 @@ def train_associative_recall_task(ntm, date, save_dir, session):
 
                 suffix = str(s) + '-' + str(step)
 
-                save_single_plot(test_x, save_dir, 'input' + suffix, 
+                save_single_plot(test_x[0], save_dir, 'input' + suffix, 
+                    'input')
+                save_double_plot(test_y, pred, save_dir, 'output' + suffix,
+                    'target', 'prediction')
+                write_head_plot = (w_w, g_w, s_w)
+                read_head_plot = (w_r, g_r, s_r)
+                labels = ('address', 'g', 'shift')
+                #save_single_plot(w_w, save_dir, 'writeadd' + suffix,
+                #    'write address')
+                #save_single_plot(w_r, save_dir, 'readadd' + suffix,
+                #    'read address')
+                #save_single_plot(g_r, save_dir, 'readforget' + suffix, '')
+                #save_single_plot(g_w, save_dir, 'writeforget' + suffix, '')
+                #save_single_plot(s_r, save_dir, 'readshift' + suffix, '')
+                #save_single_plot(s_w, save_dir, 'writeshift' + suffix, '')
+                save_multi_plot(write_head_plot, save_dir,
+                    'writehead' + suffix, labels)
+                save_multi_plot(read_head_plot, save_dir,
+                    'readhead' + suffix, labels)
+
+def train_priority_sort_task(ntm, date, save_dir, session):
+
+    batch_size = 64
+    avg_error = 0
+    lr = 1e-4
+    input_size = 8
+    output_size = 7
+    max_batches = 50000
+    print_threshold = 100
+    save_threshold = 500
+
+    saver = tf.train.Saver(tf.global_variables())
+
+    for step in range(max_batches):
+        #seq_length = 8 + int(np.random.rand()*12)
+        seq_length = 10 + int(np.random.rand()*11)
+        batch_in, batch_out = priority_sort_task_batch(batch_size,
+            seq_length, input_size - 1)
+
+        error = ntm.train_batch(batch_in, batch_out)
+        avg_error += error/print_threshold
+
+        if step % print_threshold == 0:
+
+            print('step: {0} average error: {1}'.format(step, avg_error))
+            print('average sequence errors:')
+            save_text(error, save_dir, '0-train')
+            avg_error = 0.
+            
+        if step % save_threshold == 0:
+            saver.save(session, os.path.join(save_dir, "ps_model.ntm.ckpt"))
+            seq_length = (8, 10, 15, 20)
+            #num_sequences = 3
+
+            for s in seq_length:
+                test_x, test_y = priority_sort_task_batch(2, 
+                    s, input_size - 1)
+
+                pred, w_r, w_w, g_r, g_w, s_r, s_w = ntm.run_once(test_x)
+
+                suffix = str(s) + '-' + str(step)
+
+                save_single_plot(test_x[0], save_dir, 'input' + suffix, 
                     'input')
                 save_double_plot(test_y, pred, save_dir, 'output' + suffix,
                     'target', 'prediction')
@@ -202,9 +321,9 @@ def train_associative_recall_task(ntm, date, save_dir, session):
 
 def main():
 
-    mem_shape=(32,15)
+    mem_shape=(40,15)
     input_size = 8
-    output_size = 6
+    output_size = 7
     session = tf.Session()
     ntm = NTM(mem_shape, input_size, output_size, session)
     session.run(tf.global_variables_initializer())
@@ -219,7 +338,8 @@ def main():
     #train_model(ntm, batch_size=64, max_batches=5e4, save_threshold=100)
 
     #train_copy_task(ntm, date, save_dir, saver, saver)
-    train_associative_recall_task(ntm, date, save_dir, session)
+    #train_associative_recall_task(ntm, date, save_dir, session)
+    train_priority_sort_task(ntm, date, save_dir, session)
 
 
 if __name__ == '__main__':
