@@ -71,39 +71,51 @@ def priority_sort_task_batch(batch_size, seq_length, num_bits=6):
     bs = batch_size
     sl = seq_length
     nb = num_bits
+    priority_vals = [x for x in np.linspace(0, 1., sl)]
 
-    for _ in range(batch_size):
+    for i in range(sl):
+        priority_vals[i] = np.expand_dims(priority_vals[i], axis=1)
+        priority_vals[i] = np.expand_dims(priority_vals[i], axis=1)
+        priority_vals[i] = np.expand_dims(priority_vals[i], axis=1)
+
+    for _ in range(bs):
         patterns = []
         priorities = []
+        priorities_ = priority_vals.copy()
+        np.random.shuffle(priorities_)
         for i in range(sl):
             patterns.append(np.random.randint(2, size=[1, nb, 1]) - 0.)
-            priorities.append(np.random.rand(1, 1, 1))
-
+            #priorities.append(np.random.rand(1, 1, 1))
+            priorities.append(priorities_[i])
+        
         sorted_patterns = []
-        sorted_priorities = priorities.copy()
+        sorted_priorities = priority_vals.copy()
 
         # Generic bubble sort for putting prioritized items in the correct
         # order for training.
-        changed = True
-        while changed:
-            changed = False
-            for i in range(len(sorted_priorities) - 1):
-                if sorted_priorities[i] > sorted_priorities[i+1]:
-                    sorted_priorities[i], sorted_priorities[i+1] = \
-                        sorted_priorities[i+1], sorted_priorities[i]
-                    changed = True
-        for i in range(len(sorted_priorities)):
+        #changed = True
+        #while changed:
+        #    changed = False
+        #    for i in range(len(sorted_priorities) - 1):
+        #        if sorted_priorities[i] > sorted_priorities[i+1]:
+        #            sorted_priorities[i], sorted_priorities[i+1] = \
+        #                sorted_priorities[i+1], sorted_priorities[i]
+        #            changed = True
+        for i in range(len(priority_vals)):
             index = priorities.index(sorted_priorities[i])
             sorted_patterns.append(patterns[index])
 
         # The best sort algorithms have time complexity of O(n*logn), so
         # we want the NTM to learn to sort in at most this amount of time.
-        blank_length = int(float(sl)*np.log10(float(sl))) + 1
-        blank_x = np.zeros((1, nb + 1, blank_length + sl))
-        blank_y = np.zeros((1, nb, blank_length + sl))
+        #blank_length = int(float(sl)*np.log10(float(sl))) + 1 +sl
+        blank_length = sl
+        blank_x = np.zeros((1, nb + 1, blank_length))
+        blank_y = np.zeros((1, nb + 1, blank_length))
 
         # spa = sorted patterns
+        spr_mat = np.concatenate(priorities, axis=2)
         spa_mat = np.concatenate(sorted_patterns, axis=2)
+        sprpa = np.concatenate([spr_mat, spa_mat], axis=1)
 
         # spr = sorted priorities
         # prpa = priorities and patterns
@@ -111,8 +123,11 @@ def priority_sort_task_batch(batch_size, seq_length, num_bits=6):
         pa_mat = np.concatenate(patterns, axis=2)
         prpa = np.concatenate([pr_mat, pa_mat], axis=1)
 
+        #pre_x.append(np.concatenate([prpa, blank_x], axis=2))
+        #pre_y.append(np.concatenate([blank_y, spa_mat], axis=2))
+
         pre_x.append(np.concatenate([prpa, blank_x], axis=2))
-        pre_y.append(np.concatenate([blank_y, spa_mat], axis=2))
+        pre_y.append(np.concatenate([blank_y, sprpa], axis=2))
 
     #batch_x = np.concatenate(pre_x, axis=0)
     #batch_y = np.concatenate(pre_y, axis=0)
@@ -263,7 +278,7 @@ def train_priority_sort_task(ntm, date, save_dir, session):
     avg_error = 0
     lr = 1e-4
     input_size = 8
-    output_size = 7
+    output_size = 8
     max_batches = 50000
     print_threshold = 100
     save_threshold = 500
@@ -272,7 +287,8 @@ def train_priority_sort_task(ntm, date, save_dir, session):
 
     for step in range(max_batches):
         #seq_length = 8 + int(np.random.rand()*12)
-        seq_length = 10 + int(np.random.rand()*11)
+        #seq_length = 10 + int(np.random.rand()*11)
+        seq_length = 20
         batch_in, batch_out = priority_sort_task_batch(batch_size,
             seq_length, input_size - 1)
 
@@ -323,7 +339,7 @@ def main():
 
     mem_shape=(40,15)
     input_size = 8
-    output_size = 7
+    output_size = 8
     session = tf.Session()
     ntm = NTM(mem_shape, input_size, output_size, session)
     session.run(tf.global_variables_initializer())
