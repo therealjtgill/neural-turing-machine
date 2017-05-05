@@ -58,11 +58,11 @@ def save_double_plot(plot1, plot2, folder, filename, ylabel1='', ylabel2=''):
     plt.savefig(os.path.join(path, filename), dpi=100)
     plt.close()
 
-def save_single_plot(val, folder, filename, ylabel=''):
+def save_single_plot(val, folder, filename, ylabel='', cmap='viridis'):
 
     path = make_dir(folder)
     #print(addresses)
-    plt.imshow(val.T, interpolation='none', cmap='gray', vmin=0., vmax=1.)
+    plt.imshow(val.T, interpolation='none', cmap=cmap, vmin=0., vmax=1.)
     plt.xlabel('time')
     plt.ylabel(ylabel)
 
