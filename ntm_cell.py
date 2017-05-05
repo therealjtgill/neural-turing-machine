@@ -109,8 +109,9 @@ class NTMCell(RNNCell):
     def head_pieces(head, mem_size, shift_range, axis=1, style='tuple'):
         N, M = mem_size
         S = shift_range
+        center = int(S/2.)
         shift_bias = np.zeros(S)
-        shift_bias[1] = 2.5
+        shift_bias[center+1] = 2.5
         #print(write_head_raw.get_shape(), read_head_raw.get_shape())
 
         # Fix the stupid head splitting; you changed it so that you wouldn't
@@ -187,8 +188,9 @@ def circular_convolution(shift, w_i, N, S, zero_pad=False):
     zeros = array_ops.zeros_like(shift)
     
     split_loc = N % S
-    #center = int(S/2) + 1
-    center = 1
+    center = int(S/2)
+    print('center:', center)
+    #center = 1
 
     if not zero_pad:
         num_tiles = max(int(N/S), 0)
@@ -201,8 +203,6 @@ def circular_convolution(shift, w_i, N, S, zero_pad=False):
             tack = array_ops.split(shift, [split_loc, -1], axis=1)[0]
             shift_long = array_ops.concat([shift_tile, tack], axis=1)
 
-        shift_rev = array_ops.reverse(shift_long, axis=[1])
-
     else:
         num_tiles = max(int((N - S)/S), 0)
         if num_tiles > 0:
@@ -214,10 +214,10 @@ def circular_convolution(shift, w_i, N, S, zero_pad=False):
             tack = array_ops.split(zeros, [split_loc, -1], axis=1)[0]
             shift_long = array_ops.concat([shift, zeros_tile, tack], axis=1)
 
-        shift_rev = array_ops.reverse(shift_long, axis=[1])
-
-    #center_split = array_ops.split(shift_long, [center, -1], axis=1)
-    #shift_long = array_ops.concat([center_split[1], center_split[0]], axis=1)
+    #shift_rev_ = array_ops.reverse(shift_long, axis=[1])
+    center_split = array_ops.split(shift_long, [center, -1], axis=1)
+    shift_rev_ = array_ops.concat([center_split[1], center_split[0]], axis=1)
+    shift_rev = array_ops.reverse(shift_rev_, axis=[1])
 
     circ = []
     for j in range(N):
