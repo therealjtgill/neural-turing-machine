@@ -9,43 +9,43 @@ from time import time
 np.set_printoptions(threshold=np.nan)
 
 class NTM(object):
-	'''
-	Performs several operations relevant to the NTM:
-	  - builds the computation graph
-	  - trains the model
-	  - tests the model
-	'''
+    '''
+    Performs several operations relevant to the NTM:
+      - builds the computation graph
+      - trains the model
+      - tests the model
+    '''
     def __init__(self, mem_size, input_size, output_size, session,
                  num_heads=1, shift_range=3, name="NTM"):
-    	'''
-		Builds the computation graph for the Neural Turing Machine.
-		The tasks from the original paper call for the NTM to take in a
-		sequence of arrays, and produce some output.
-		Let B = batch size, T = sequence length, and L = array length, then
-		a single input sequence is a matrix of size [TxL]. A batch of these
-		input sequences has size [BxTxL].
+        '''
+        Builds the computation graph for the Neural Turing Machine.
+        The tasks from the original paper call for the NTM to take in a
+        sequence of arrays, and produce some output.
+        Let B = batch size, T = sequence length, and L = array length, then
+        a single input sequence is a matrix of size [TxL]. A batch of these
+        input sequences has size [BxTxL].
 
-		Arguments:
-		  mem_size - Tuple of integers corresponding to the number of storage
-		    locations and the dimension of each storage location (in the paper
-		    the memory matrix is NxM, mem_size refers to (N, M)).
-		  input_size - Integer number of elements in a single input vector
-		    (the value L).
-		  output_size - Integer number of elements in a single output vector.
-		  session - The TensorFlow session object that refers to the current
-		    computation graph.
-		  num_heads - The integer number of write heads the NTM uses (future
-		    feature).
-		  shift_range - The integer number of shift values that the read/write 
-		    heads can perform, which corresponds to the direction and magnitude
-		    of the allowable shifts.
-		    Shift ranges and corresponding available shift
-		    directions/magnitudes:
-		      3 => [-1, 0, 1]
-		      4 => [-2, -1, 0, 1] 
-		      5 => [-2, -1, 0, 1, 2]
-		  name - A string name for the variable scope, for troubleshooting.
-    	'''
+        Arguments:
+          mem_size - Tuple of integers corresponding to the number of storage
+            locations and the dimension of each storage location (in the paper
+            the memory matrix is NxM, mem_size refers to (N, M)).
+          input_size - Integer number of elements in a single input vector
+            (the value L).
+          output_size - Integer number of elements in a single output vector.
+          session - The TensorFlow session object that refers to the current
+            computation graph.
+          num_heads - The integer number of write heads the NTM uses (future
+            feature).
+          shift_range - The integer number of shift values that the read/write 
+            heads can perform, which corresponds to the direction and magnitude
+            of the allowable shifts.
+            Shift ranges and corresponding available shift
+            directions/magnitudes:
+              3 => [-1, 0, 1]
+              4 => [-2, -1, 0, 1] 
+              5 => [-2, -1, 0, 1, 2]
+          name - A string name for the variable scope, for troubleshooting.
+        '''
         self.num_heads = 1
         self.sess = session
         self.S = shift_range
@@ -120,18 +120,18 @@ class NTM(object):
             self.train_op = optimizer.apply_gradients(capped_grads)
 
     def controller(self, inputs, batch_size, seq_length, num_units=100):
-    	'''
-		Builds a single-layer LSTM controller that manipulates values in the 
-		memory matrix and helps produce output. This method should only be 
-		utilized by the class.
+        '''
+        Builds a single-layer LSTM controller that manipulates values in the 
+        memory matrix and helps produce output. This method should only be 
+        utilized by the class.
 
-		Arguments:
-		  inputs - TF tensor containing data that is passed to the controller.
-		  batch_size - The number of sequences in a given training batch.
-		  seq_length - The length of the sequence being passed to the 
-		    controller.
-		  num_units - The number of units inside of the LSTM controller.
-    	'''
+        Arguments:
+          inputs - TF tensor containing data that is passed to the controller.
+          batch_size - The number of sequences in a given training batch.
+          seq_length - The length of the sequence being passed to the 
+            controller.
+          num_units - The number of units inside of the LSTM controller.
+        '''
         N = self.N
         M = self.M
         S = self.S
@@ -172,29 +172,29 @@ class NTM(object):
         return head_raw
 
     def train_batch(self, batch_x, batch_y, learning_rate=1e-4):
-    	'''
-		Trains the model on a batch of inputs and their corresponding outputs.
-		Returns the error that was obtained by training the NTM on the input
-		sequence that is provided as an argument.
+        '''
+        Trains the model on a batch of inputs and their corresponding outputs.
+        Returns the error that was obtained by training the NTM on the input
+        sequence that is provided as an argument.
 
-		Arguments:
-		  batch_x - The batch of input training sequences [BxTxL1]. Note that
-		    the first two dimensions (batch size and sequence length) of both
-		    batches MUST be the same. Numpy array.
-		  batch_y - The batch of output training sequences [BxTxL2]. The 
-		    output sequences are the desired outputs after the NTM has been
-		    presented with the training input, batch_x. Numpy array.
+        Arguments:
+          batch_x - The batch of input training sequences [BxTxL1]. Note that
+            the first two dimensions (batch size and sequence length) of both
+            batches MUST be the same. Numpy array.
+          batch_y - The batch of output training sequences [BxTxL2]. The 
+            output sequences are the desired outputs after the NTM has been
+            presented with the training input, batch_x. Numpy array.
 
-		Outputs:
-		  error - The amount of error (float)produced from this particular 
-		    training sequence. The error operation is defined in the
-		    constructor.
-    	'''
+        Outputs:
+          error - The amount of error (float)produced from this particular 
+            training sequence. The error operation is defined in the
+            constructor.
+        '''
         lr = learning_rate
         batch_size = batch_x.shape[0]
         ntm_init_state = self.ntm_cell.bias_state(batch_size)
-        lstm_init_state = tuple(
-            [np.zeros((batch_size, s)) for s in self.lstm_cell.state_size])
+        lstm_init_state = tuple([np.zeros((batch_size, s)) \
+            for s in self.lstm_cell.state_size])
 
         fetches = [self.error, self.train_op]
         feeds = {
@@ -214,35 +214,35 @@ class NTM(object):
         return error
 
     def run_once(self, test_x):
-    	'''
-		Passes a single input sequence to the NTM, and produces an output
-		according to what it's learned. Returns a tuple of items of interest
-		for troubleshooting purposes (the read/write vectors and output).
+        '''
+        Passes a single input sequence to the NTM, and produces an output
+        according to what it's learned. Returns a tuple of items of interest
+        for troubleshooting purposes (the read/write vectors and output).
 
-		Arguments:
-		  test_x - A batch of input sequences [BxTxL1] that the NTM will use to
-		    produce a batch of output sequences [BxTxL2]. Numpy array.
+        Arguments:
+          test_x - A batch of input sequences [BxTxL1] that the NTM will use to
+            produce a batch of output sequences [BxTxL2]. Numpy array.
 
-		Outputs:
-		  output_b - A numpy array representing the output of the NTM after
-		    being presented with the input batch [BxTxL2].
-		  w_read_b - A numpy array of "read" locations that the NTM used.
-		    From the paper, write locations are normalized vectors that allow
-		    the NTM to focus on rows of the memory matrix.
-		  w_write_b - A numpy array of "write" locations that the NTM used.
-		  g_read_b - A numpy array of scalar values indicating whether the NTM
-		    used the previous read location or associative recall to determine
-		    the read location at each timestep.
-		  g_write_b - A numpy array of scalar values indicating whether the NTM
-		    used the previous write location or associative recall to determine
-		    the write location at each timestep.
-		  s_read_b - A numpy array of vectors describing the magnitude and
-		    direction of the shifting operation that was applied to the read
-		    head.
-		  s_write_b - A numpy array of vectors describing the magnitude and
-		    direction of the shifting operation that was applied to the write
-		    head.
-    	'''
+        Outputs:
+          output_b - A numpy array representing the output of the NTM after
+            being presented with the input batch [BxTxL2].
+          w_read_b - A numpy array of "read" locations that the NTM used.
+            From the paper, write locations are normalized vectors that allow
+            the NTM to focus on rows of the memory matrix.
+          w_write_b - A numpy array of "write" locations that the NTM used.
+          g_read_b - A numpy array of scalar values indicating whether the NTM
+            used the previous read location or associative recall to determine
+            the read location at each timestep.
+          g_write_b - A numpy array of scalar values indicating whether the NTM
+            used the previous write location or associative recall to determine
+            the write location at each timestep.
+          s_read_b - A numpy array of vectors describing the magnitude and
+            direction of the shifting operation that was applied to the read
+            head.
+          s_write_b - A numpy array of vectors describing the magnitude and
+            direction of the shifting operation that was applied to the write
+            head.
+        '''
         batch_size = test_x.shape[0]
         num_seq = test_x.shape[1]
         sequences = np.split(test_x, num_seq, axis=1)

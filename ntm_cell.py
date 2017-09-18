@@ -1,25 +1,19 @@
 from __future__ import print_function
 
-import collections
-import math
 import numpy as np
 
-from tensorflow.python.framework import dtypes
-from tensorflow.python.framework import ops
 from tensorflow.python.ops import array_ops
-from tensorflow.python.ops import clip_ops
-from tensorflow.python.ops import embedding_ops
 from tensorflow.python.ops import gen_math_ops
-from tensorflow.python.ops import init_ops
 from tensorflow.python.ops import linalg_ops
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import nn_ops
-from tensorflow.python.ops import partitioned_variables
-from tensorflow.python.ops import random_ops
 from tensorflow.python.ops import variable_scope as vs
 
 from tensorflow.python.ops.rnn_cell_impl import _RNNCell as RNNCell
 
+# TODO(@therealjtgill) All single-character variable names need to be changed
+# to something more descriptive. Add a note in the code stating how variable
+# names map to the conventions used in the paper.
 class NTMCell(RNNCell):
     '''
     An NTMCell that inherits from RNNCell. This inheritance was used to exploit
@@ -88,19 +82,22 @@ class NTMCell(RNNCell):
             write_pieces, read_pieces = self.head_pieces(inputs, (N, M), S)
 
             w_write = generate_address(write_pieces[0:5], w_write_prev,
-                mem_prev, N, S)
+                                       mem_prev, N, S)
             w_read = generate_address(read_pieces, w_read_prev,
-                mem_prev, N, S)
+                                      mem_prev, N, S)
 
             erase = array_ops.expand_dims(write_pieces[-1], axis=2)
             add = array_ops.expand_dims(write_pieces[-2], axis=2)
 
             w_write_ = array_ops.expand_dims(w_write, axis=2)
 
-            erase_box = math_ops.matmul(
-                w_write_, array_ops.transpose(erase, perm=[0, 2, 1]))
-            add_box = math_ops.matmul(
-                w_write_, array_ops.transpose(add, perm=[0, 2, 1]))
+            erase_box = \
+                math_ops.matmul(w_write_,
+                                array_ops.transpose(erase, perm=[0, 2, 1]))
+
+            add_box = \
+                math_ops.matmul(w_write_,
+                                array_ops.transpose(add, perm=[0, 2, 1]))
 
             mem_new = mem_prev*(1. - erase_box) + add_box
 
@@ -115,13 +112,13 @@ class NTMCell(RNNCell):
     def bias_state(self, batch_size):
         '''
         Generates a state tuple containing values that are slightly biased.
-        This is used to create an initial state to be fed into the RNNCell 
+        This is used to create an initial state to be fed into the RNNCell
         before the first timestep. The read vectors are initialized with all
-        memory locations being accessed uniformly. The write vectors are 
+        memory locations being accessed uniformly. The write vectors are
         initialized with a random element being one-hot.
 
         Arguments:
-          batch_size - Integer size of the number of sequences in the batch.
+          batch_size - Integer size; the number of sequences in a batch.
 
         Outputs:
           bias_state - Tuple of numpy arrays containing the initial state for
@@ -131,7 +128,7 @@ class NTMCell(RNNCell):
         '''
         state_size = self.state_size
         start_bias = int(np.random.rand()*self.N/2.)
-        
+
         bias_state = [
             np.abs(np.random.rand(batch_size, s))
             for s in state_size[0:-2]
@@ -140,7 +137,7 @@ class NTMCell(RNNCell):
         normal = np.zeros((batch_size, state_size[-1]))
         normal += 1./float(state_size[-1])
         one_hot = np.zeros((batch_size, state_size[-1]))
-        one_hot[:,start_bias] = 1.
+        one_hot[:, start_bias] = 1.
         #for i in range(batch_size):
         #   hot_index = int(np.random.rand()*self.N/2.)
         #   one_hot[i, hot_index] = 1.
@@ -149,10 +146,12 @@ class NTMCell(RNNCell):
 
         return tuple(bias_state)
 
+    # TODO(@therealjtgill) Have head pieces return a tuple always, have another
+    # method convert the tuple into a dict.
     @staticmethod
     def head_pieces(head, mem_size, shift_range, axis=1, style='tuple'):
         '''
-        There are several activation functions applied to the output of the 
+        There are several activation functions applied to the output of the
         LSTM or FF controller, this method performs the necessary operations
         to produce the shift vector, interpolation, sharpening, key, and beta
         for the read/write operations. Also produces the add and erase vectors
@@ -169,34 +168,32 @@ class NTMCell(RNNCell):
             value is 1.
             (This should be eliminated to perform splitting on the last axis
             of the tensor... can probably be changed to '-1' without problems)
-          style - How the head data should be reported, as a tuple or as a 
-            dictionary. The tuple formulation is used for the internal 
+          style - How the head data should be reported, as a tuple or as a
+            dictionary. The tuple formulation is used for the internal
             calculations of the NTMCell class; the dictionary form is used
             for troubleshooting.
             Possble values: "tuple" or "dict"
         '''
         N, M = mem_size
         S = shift_range
+        _ = N
         center = int(S/2.)
         shift_bias = np.zeros(S)
         shift_bias[center+1] = 2.5
         #print(write_head_raw.get_shape(), read_head_raw.get_shape())
 
-        # Fix the stupid head splitting; you changed it so that you wouldn't
-        # have to concatenate/split crap inside of ntmagain.py
-
         # Number of elements in the read/write heads, respectively.
         splits = [M+S+3, 3*M+S+3]
         read_head_raw, write_head_raw = array_ops.split(head, splits,
-        	axis=axis)
+                                                        axis=axis)
 
-        write_pieces = array_ops.split(write_head_raw,
-            [M, S, 1, 1, 1, M, M], axis=axis)
+        write_pieces = array_ops.split(write_head_raw, [M, S, 1, 1, 1, M, M],
+                                       axis=axis)
         read_pieces = array_ops.split(read_head_raw, [M, S, 1, 1, 1],
-        	axis=axis)
+                                      axis=axis)
 
         key_w, shift_w, gamma_w, beta_w, g_w, add_w, erase_w = write_pieces
-            
+
         # Multiple operations are applied to the pieces of the write head,
         # see the original paper or this project's writeup for the breakdown.
         shift_w = nn_ops.softmax(shift_w + shift_bias)
@@ -214,9 +211,9 @@ class NTMCell(RNNCell):
         beta_r = nn_ops.softplus(beta_r)
         g_r = math_ops.sigmoid(g_r)
 
-        if style=='tuple':
-            write_head = (key_w, shift_w, gamma_w, beta_w, g_w,
-            	add_w, erase_w)
+        if style == 'tuple':
+            write_head = (key_w, shift_w, gamma_w, beta_w, g_w, add_w, erase_w)
+
             read_head = (key_r, shift_r, gamma_r, beta_r, g_r)
         else:
             write_head = \
@@ -241,24 +238,24 @@ class NTMCell(RNNCell):
 
         return write_head, read_head
 
-def cosine_similarity(a, b):
+def cosine_similarity(vec_a, vec_b):
     '''
-    Computes the cosine similarity between tensors 'a' and 'b'. This method
-    assumes that rank(a) = rank(b) = 1.
+    Computes the cosine similarity between tensors 'vec_a' and 'vec_b'. This
+    method assumes that rank(vec_a) = rank(vec_b) = 1.
 
     Arguments:
-      a - Rank(1) tensor.
-      b - Rank(1) tensor.
+      vec_a - Rank(1) tensor.
+      vec_b - Rank(1) tensor.
 
     Outputs:
       cos_sim - Rank(0) tensor containing cosine similarities between tensors
-        'a' and 'b'.
+        'vec_a' and 'vec_b'.
     '''
 
-    dot = math_ops.reduce_sum(a*b, axis=1)
+    dot = math_ops.reduce_sum(vec_a*vec_b, axis=1)
 
-    norm_a = linalg_ops.norm(a, ord=2, axis=1)
-    norm_b = linalg_ops.norm(b, ord=2, axis=1)
+    norm_a = linalg_ops.norm(vec_a, ord=2, axis=1)
+    norm_b = linalg_ops.norm(vec_b, ord=2, axis=1)
 
     # Some padding is added to the denominator to prevent 0/0 errors.
     cos_sim = math_ops.divide(dot, math_ops.add(norm_a*norm_b, 1e-8))
@@ -277,7 +274,7 @@ def circular_convolution(shift, w_i, N, S, zero_pad=False):
     between matrices (rank(2) tensors), not just vectors.
 
     Arguments:
-      shift - Rank(2) tensor with [BxS] elements indicating the magnitude and 
+      shift - Rank(2) tensor with [BxS] elements indicating the magnitude and
         direction by which the address vector will be shifted for every batch.
         This is produced by the controller, so in most cases it won't be rows
         of one-hots.
@@ -285,7 +282,7 @@ def circular_convolution(shift, w_i, N, S, zero_pad=False):
         addresses.
       N - Integer number of memory locations in the memory matrix.
       S - Integer number of shifts that can be applied to the interpolated
-        address. 
+        address.
       zero_pad - Not used, left because I'm a code packrat.
 
     Outputs:
@@ -295,7 +292,7 @@ def circular_convolution(shift, w_i, N, S, zero_pad=False):
 
     #shift_rev = array_ops.reverse(shift, axis=[1])
     zeros = array_ops.zeros_like(shift)
-    
+
     split_loc = N % S
     center = int(S/2)
     #print('center:', center)

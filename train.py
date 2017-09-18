@@ -137,7 +137,7 @@ def priority_sort_task_batch(batch_size, seq_length, num_bits=6):
     return batch_x, batch_y
 
 
-def train_copy_task(ntm, date, save_dir, session):
+def train_copy_task(date, save_dir):
 
     mem_shape=(32,15)
     batch_size = 64
@@ -150,6 +150,14 @@ def train_copy_task(ntm, date, save_dir, session):
     save_threshold = 500
     sequence_err = [0.,]*20
     sequences = [0.,]*20
+    mem_shape = (40, 15)
+
+
+    session = tf.Session(config=tf.ConfigProto(device_count = {'GPU':0}))
+    ntm = NTM(mem_shape, input_size, output_size, session)
+    
+    session.run(tf.global_variables_initializer())
+    print('Computation graph built.')
 
     saver = tf.train.Saver(tf.global_variables())
 
@@ -197,9 +205,9 @@ def train_copy_task(ntm, date, save_dir, session):
                 read_head_plot = (w_r, g_r, s_r)
                 labels = ('address', 'g', 'shift')
                 #save_single_plot(w_w, save_dir, 'writeadd' + suffix,
-                #    'write address')
+                #                 'write address')
                 #save_single_plot(w_r, save_dir, 'readadd' + suffix,
-                #    'read address')
+                #                 'read address')
                 #save_single_plot(g_r, save_dir, 'readforget' + suffix, '')
                 #save_single_plot(g_w, save_dir, 'writeforget' + suffix, '')
                 #save_single_plot(s_r, save_dir, 'readshift' + suffix, '')
@@ -209,7 +217,7 @@ def train_copy_task(ntm, date, save_dir, session):
                 save_multi_plot(read_head_plot, save_dir,
                     'readhead' + suffix, labels)
 
-def train_associative_recall_task(ntm, date, save_dir, session):
+def train_associative_recall_task(date, save_dir):
     
     batch_size = 64
     avg_error = 0
@@ -219,6 +227,14 @@ def train_associative_recall_task(ntm, date, save_dir, session):
     max_batches = 50000
     print_threshold = 100
     save_threshold = 500
+    mem_shape = (40, 15)
+
+
+    session = tf.Session(config=tf.ConfigProto(device_count = {'GPU':0}))
+    ntm = NTM(mem_shape, input_size, output_size, session)
+    
+    session.run(tf.global_variables_initializer())
+    print('Computation graph built.')
 
     saver = tf.train.Saver(tf.global_variables())
 
@@ -272,7 +288,7 @@ def train_associative_recall_task(ntm, date, save_dir, session):
                 save_multi_plot(read_head_plot, save_dir,
                     'readhead' + suffix, labels)
 
-def train_priority_sort_task(ntm, date, save_dir, session):
+def train_priority_sort_task(date, save_dir):
 
     batch_size = 64
     avg_error = 0
@@ -282,6 +298,14 @@ def train_priority_sort_task(ntm, date, save_dir, session):
     max_batches = 50000
     print_threshold = 100
     save_threshold = 500
+    mem_shape = (40, 15)
+
+
+    session = tf.Session(config=tf.ConfigProto(device_count = {'GPU':0}))
+    ntm = NTM(mem_shape, input_size, output_size, session)
+    
+    session.run(tf.global_variables_initializer())
+    print('Computation graph built.')
 
     saver = tf.train.Saver(tf.global_variables())
 
@@ -337,15 +361,15 @@ def train_priority_sort_task(ntm, date, save_dir, session):
 
 def main():
 
-    mem_shape=(40,15)
-    input_size = 8
-    output_size = 8
-    session = tf.Session()
-    ntm = NTM(mem_shape, input_size, output_size, session)
-    session.run(tf.global_variables_initializer())
-    print('Computation graph built.')
+    #mem_shape=(40,15)
+    #input_size = 8
+    #output_size = 8
+    #session = tf.Session(config=tf.ConfigProto(device_count = {'GPU':0}))
+    
+    #session.run(tf.global_variables_initializer())
+    #print('Computation graph built.')
 
-    saver = tf.train.Saver(tf.global_variables())
+    #saver = tf.train.Saver(tf.global_variables())
 
     date = datetime.now()
     date = str(date).replace(' ', '').replace(':', '-')
@@ -353,9 +377,13 @@ def main():
 
     #train_model(ntm, batch_size=64, max_batches=5e4, save_threshold=100)
 
-    #train_copy_task(ntm, date, save_dir, saver, saver)
+    #train_copy_task(ntm, date, save_dir, session)
     #train_associative_recall_task(ntm, date, save_dir, session)
-    train_priority_sort_task(ntm, date, save_dir, session)
+    #train_priority_sort_task(ntm, date, save_dir, session)
+
+    #train_copy_task(date, save_dir)
+    train_associative_recall_task(date, save_dir)
+    #train_priority_sort_task(date, save_dir)
 
 
 if __name__ == '__main__':
