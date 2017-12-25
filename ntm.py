@@ -1,10 +1,9 @@
 from __future__ import print_function
 import tensorflow as tf
 import numpy as np
-from utils import *
-from datetime import datetime
 from ntm_cell import NTMCell
-from time import time
+from ntm_cell import head_pieces_tuple_to_dict
+
 
 np.set_printoptions(threshold=np.nan)
 
@@ -15,6 +14,7 @@ class NTM(object):
       - trains the model
       - tests the model
     '''
+    
     def __init__(self, mem_size, input_size, output_size, session,
                  num_heads=1, shift_range=3, name="NTM"):
         '''
@@ -46,6 +46,7 @@ class NTM(object):
               5 => [-2, -1, 0, 1, 2]
           name - A string name for the variable scope, for troubleshooting.
         '''
+
         self.num_heads = 1
         self.sess = session
         self.S = shift_range
@@ -55,9 +56,7 @@ class NTM(object):
 
         num_lstm_units = 100
         self.dt=tf.float32
-        self.pi = 64
 
-        pi = self.pi
         dt = self.dt
         N = self.N
         M = self.M
@@ -79,10 +78,13 @@ class NTM(object):
 
             head_raw = self.controller(self.feed_in, batch_size, seq_length)
 
-            self.ntm_cell = NTMCell(mem_size=(N, M), shift_range=S)
+            self.ntm_cell = NTMCell(mem_size=(N, M), num_shifts=S)
 
-            self.write_head, self.read_head = NTMCell.head_pieces(
-                head_raw, mem_size=(N, M), shift_range=S, axis=2, style='dict')
+            write_head, read_head = NTMCell.head_pieces(
+                head_raw, mem_size=(N, M), num_shifts=S, axis=2)
+
+            self.write_head, self.read_head = \
+                head_pieces_tuple_to_dict(write_head, read_head)
 
             self.ntm_init_state = tuple(
                 [tf.placeholder(dtype=dt, shape=(None, s)) \
@@ -90,7 +92,7 @@ class NTM(object):
 
             self.ntm_reads, self.ntm_last_state = tf.nn.dynamic_rnn(
                 cell=self.ntm_cell, initial_state=self.ntm_init_state,
-                inputs=head_raw, dtype=dt, parallel_iterations=pi)
+                inputs=head_raw, dtype=dt)
 
             self.w_read = self.ntm_last_state[-2]
             self.w_write = self.ntm_last_state[-1]
@@ -132,10 +134,10 @@ class NTM(object):
             controller.
           num_units - The number of units inside of the LSTM controller.
         '''
+
         N = self.N
         M = self.M
         S = self.S
-        pi = self.pi
         dt = self.dt
         num_heads = self.num_heads
 
@@ -151,7 +153,7 @@ class NTM(object):
 
         lstm_out_raw, self.lstm_last_state = tf.nn.dynamic_rnn(
             cell=self.lstm_cell, initial_state=lstm_init_state,
-            inputs=inputs, dtype=dt, parallel_iterations=pi)
+            inputs=inputs, dtype=dt)
 
         lstm_out = tf.tanh(lstm_out_raw)
         lstm_out_flat = tf.reshape(lstm_out, [-1, num_units])
@@ -190,6 +192,7 @@ class NTM(object):
             training sequence. The error operation is defined in the
             constructor.
         '''
+
         lr = learning_rate
         batch_size = batch_x.shape[0]
         ntm_init_state = self.ntm_cell.bias_state(batch_size)
@@ -243,6 +246,7 @@ class NTM(object):
             direction of the shifting operation that was applied to the write
             head.
         '''
+
         batch_size = test_x.shape[0]
         num_seq = test_x.shape[1]
         sequences = np.split(test_x, num_seq, axis=1)
