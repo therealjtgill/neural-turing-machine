@@ -17,7 +17,7 @@ from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import nn_ops
 from tensorflow.python.ops import variable_scope as vs
 
-from tensorflow.python.ops.rnn_cell_impl import _RNNCell as RNNCell
+from tensorflow.python.ops.rnn_cell_impl import RNNCell
 
 
 # TODO(@therealjtgill) All single-character variable names need to be changed

@@ -29,7 +29,7 @@ class NTMRegression(object):
     self.sess = session
     self.num_heads = num_heads
 
-    (num_slots, num_bits) = self.mem_size
+    (_, num_bits) = self.mem_size
     dt = tf.float32
 
     head_size = 4*num_bits + 2*self.shift_range + 6
